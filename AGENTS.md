@@ -24,6 +24,7 @@ Este repositorio implementa una aplicación local-first y CPU-first para analiza
 8. No importar scripts, datos, modelos o reglas privadas. Los ejemplos son sintéticos.
 9. No sustituir producción por mocks; los mocks pertenecen a tests.
 10. No borrar datos persistentes para resolver un fallo de arranque.
+11. `version.json` owns the visible `MAJOR.MINOR.BUILD` release. Su `semver` debe coincidir con backend, frontend y lockfile; los cambios solo documentales no publican versión.
 
 ## Comandos
 
@@ -37,6 +38,7 @@ python3 scripts/cancel_smoke.py
 
 Backend: `cd backend && uv sync --frozen --extra dev && uv run pytest && uv run ruff check .`.
 Frontend: `cd frontend && npm ci && npm run typecheck && npm run test -- --run && npm run build`.
+Versión: `python3 scripts/check_version.py`.
 
 Antes de publicar, prueba desde un checkout limpio con nombre de proyecto, volumen y puerto Compose separados. Verifica descargas abriendo XLSX/PDF, reinicio persistente, cola caída/recuperada y ausencia de datos privados. No afirmes compatibilidad con una plataforma no probada.
 

@@ -1,9 +1,12 @@
 import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, Profile, waitJob } from "../../api/client";
+import { excelChecklist, explain } from "../../education/concepts";
 
 type Goal = "estimate_value" | "classify" | "forecast" | "drivers" | "explore";
 type DatasetInfo = { safe_extension: string; metadata_json: { sheet_names?: string[] } };
+type ExamplePreset = { id:string; name:string; description:string; filename:string; format:string; goal:Goal; problem_type:string; target:{name:string}|null; date_column:{name:string}|null; included_columns:string[]; primary_metric:string|null; depth:string; forecast_horizon:number|null; aggregation:string|null; parser_options:Record<string,unknown>; what_you_learn:string };
+type Preflight = { id:string; config_sha256:string; can_run:boolean; blockers:Array<{code:string;explanation:string;suggestion:string}>; warnings:Array<{code:string;explanation:string;suggestion:string}>; explanation:string; suggestions:string[] };
 const goals: Array<{ id: Goal; title: string; desc: string }> = [
   {
     id: "estimate_value",
@@ -52,6 +55,9 @@ export function Wizard() {
   const [primaryMetric, setPrimaryMetric] = useState("");
   const [horizon, setHorizon] = useState(3);
   const [aggregation, setAggregation] = useState("mean");
+  const [examples, setExamples] = useState<ExamplePreset[]>([]);
+  const [selectedExample, setSelectedExample] = useState<ExamplePreset | null>(null);
+  const [preflight, setPreflight] = useState<Preflight | null>(null);
   async function upload(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -83,7 +89,7 @@ export function Wizard() {
       setBusy(false);
     }
   }
-  const prepare = useCallback(async (id: string, options: Record<string, unknown> = {}) => {
+  const prepare = useCallback(async (id: string, options: Record<string, unknown> = {}, preset?: ExamplePreset) => {
     setStatus("Preparando una versión auditable…");
     const made = await api<{ dataset_version_id: string; job_id: string }>(
       `/datasets/${id}/versions`,
@@ -97,7 +103,18 @@ export function Wizard() {
       `/dataset-versions/${made.dataset_version_id}/profile`,
     );
     setProfile(p);
-    setIncluded(p.columns.filter((column) => !column.possible_id).map((column) => column.column_id));
+    const byName = (name?: string) => p.columns.find((column) => column.display_name === name)?.column_id ?? "";
+    setIncluded(preset ? preset.included_columns.map((name) => byName(name)).filter(Boolean) : p.columns.filter((column) => !column.possible_id).map((column) => column.column_id));
+    if (preset) {
+      setSelectedExample(preset);
+      setGoal(preset.goal);
+      setTarget(byName(preset.target?.name));
+      setDateCol(byName(preset.date_column?.name));
+      setDepth(preset.depth);
+      setPrimaryMetric(preset.primary_metric ?? "");
+      setHorizon(preset.forecast_horizon ?? 3);
+      setAggregation(preset.aggregation ?? "mean");
+    }
     setStep(2);
     setStatus("");
   }, []);
@@ -115,19 +132,24 @@ export function Wizard() {
         await waitJob(created.job_id, (j) =>
           setStatus(j.progress.message ?? "Inspeccionando…"),
         );
-        await prepare(created.dataset_id);
+        const preset = examples.find((item) => item.id === id);
+        if (!preset) throw new Error("No encontramos la configuración del ejemplo.");
+        await prepare(created.dataset_id, preset.parser_options, preset);
       } catch (e) {
         setError((e as Error).message);
       } finally {
         setBusy(false);
       }
     },
-    [prepare],
+    [examples, prepare],
   );
   useEffect(() => {
+    void api<{items:ExamplePreset[]}>("/examples").then((data) => setExamples(data.items ?? [])).catch((reason:Error) => setError(reason.message));
+  }, []);
+  useEffect(() => {
     const ex = params.get("example");
-    if (ex && !dataset) void loadExample(ex);
-  }, [dataset, loadExample, params]);
+    if (ex && !dataset && examples.length) void loadExample(ex);
+  }, [dataset, examples.length, loadExample, params]);
   const available = profile?.columns.filter((c) => !c.possible_id) ?? [];
   const selected = useMemo(
     () => profile?.columns.find((c) => c.column_id === target),
@@ -140,7 +162,9 @@ export function Wizard() {
         ? "forecasting"
         : goal === "explore"
           ? "exploration"
-          : selected?.inferred_semantic_type === "categorical"
+          : goal === "estimate_value"
+            ? "regression"
+            : selected?.inferred_semantic_type === "categorical"
             ? "classification"
             : "regression";
   const defaultMetric = resolvedProblem === "classification" ? "balanced_accuracy" : "mae";
@@ -153,47 +177,68 @@ export function Wizard() {
       setError("Elige la columna de fecha.");
       return;
     }
+    if (goal === "estimate_value" && selected?.inferred_semantic_type !== "numeric") {
+      setError("Estimar un valor necesita un resultado numérico. Elige una columna numérica o cambia de objetivo.");
+      return;
+    }
+    if (goal === "classify" && selected?.inferred_semantic_type !== "categorical") {
+      setError("Predecir una categoría necesita etiquetas. No convertimos automáticamente un número continuo en clases.");
+      return;
+    }
     setError("");
+    setPreflight(null);
     setStep(4);
   }
-  async function run() {
+  function analysisConfig() {
+    return {
+      schema_version: "1.0",
+      dataset_version_id: version,
+      goal,
+      problem_type: resolvedProblem,
+      target_column_id: goal === "explore" ? null : target,
+      date_column_id: goal === "forecast" ? dateCol : null,
+      included_column_ids: included,
+      excluded_column_ids: profile?.columns.filter((c) => c.possible_id).map((c) => c.column_id) ?? [],
+      depth,
+      primary_metric: goal === "explore" ? null : primaryMetric || defaultMetric,
+      validation_context: "independent_records",
+      seed: 42,
+      forecast_options: goal === "forecast" ? { horizon, aggregation } : null,
+    };
+  }
+  async function checkConfiguration() {
     setBusy(true);
     setError("");
     try {
-      const config = {
-        schema_version: "1.0",
-        dataset_version_id: version,
-        goal,
-        problem_type: resolvedProblem,
-        target_column_id: goal === "explore" ? null : target,
-        date_column_id: goal === "forecast" ? dateCol : null,
-        included_column_ids: included,
-        excluded_column_ids:
-          profile?.columns
-            .filter((c) => c.possible_id)
-            .map((c) => c.column_id) ?? [],
-        depth,
-        primary_metric: goal === "explore" ? null : primaryMetric || defaultMetric,
-        validation_context: "independent_records",
-        seed: 42,
-        forecast_options: goal === "forecast" ? { horizon, aggregation } : null,
-      };
       setStatus("Comprobando que la evaluación sea defendible…");
       const pf = await api<{ preflight_id: string; job_id: string }>(
         "/preflights",
-        { method: "POST", body: JSON.stringify({ config }) },
+        { method: "POST", body: JSON.stringify({ config: analysisConfig() }) },
       );
       await waitJob(pf.job_id, (j) =>
         setStatus(j.progress.message ?? "Preparando evaluación…"),
       );
-      const ready = await api<{ config_sha256: string }>(
+      const ready = await api<Preflight>(
         `/preflights/${pf.preflight_id}`,
       );
+      setPreflight(ready);
+      setStatus("");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function run() {
+    if (!preflight?.can_run) return;
+    setBusy(true);
+    setError("");
+    try {
       const created = await api<{ run_id: string; job_id: string }>("/runs", {
         method: "POST",
         body: JSON.stringify({
-          preflight_id: pf.preflight_id,
-          config_sha256: ready.config_sha256,
+          preflight_id: preflight.id,
+          config_sha256: preflight.config_sha256,
         }),
       });
       nav(`/runs/${created.run_id}/progress?job=${created.job_id}`);
@@ -202,6 +247,7 @@ export function Wizard() {
       setBusy(false);
     }
   }
+  const targetOptions = available.filter((column) => goal === "classify" ? column.inferred_semantic_type === "categorical" : goal === "estimate_value" || goal === "forecast" ? column.inferred_semantic_type === "numeric" : true);
   return (
     <main className="wizardPage">
       <div className="wizardHeader">
@@ -235,9 +281,9 @@ export function Wizard() {
       )}
       {step === 1 && (
         <section className="panel uploadPanel">
-          <h2>Sube tu archivo</h2>
+          <h2>Sube tu Excel o archivo de datos</h2>
           <p>
-            CSV, XLSX o Parquet · máximo 100 MiB. Conservamos el original y
+            Excel (.xlsx), CSV o Parquet · máximo 100 MiB. Conservamos el original y
             registramos cómo se interpretó.
           </p>
           <label className="dropzone">
@@ -253,6 +299,12 @@ export function Wizard() {
               No ejecutamos fórmulas, macros ni contenido del archivo.
             </small>
           </label>
+          <details className="excelHelp" open>
+            <summary>¿Cómo debería estar organizado mi Excel?</summary>
+            <ul>{excelChecklist.map((item) => <li key={item}>{item}</li>)}</ul>
+            <p>Si tu archivo tiene varias hojas, podrás elegir cuál analizar. Laboratorio ML no interpreta el diseño visual de tu Excel como información. Lo importante es la tabla.</p>
+            <p><strong>.xls antiguo no está soportado;</strong> guárdalo como .xlsx desde Excel antes de subirlo.</p>
+          </details>
           {xlsxInfo && (
             <div className="parseOptions">
               <h3>Cómo leer este Excel</h3>
@@ -264,28 +316,16 @@ export function Wizard() {
               <button className="button primary" disabled={busy || !sheetName} onClick={() => void prepare(dataset, { sheet_name: sheetName, header_row: headerRow - 1 })}>Procesar esta hoja</button>
             </div>
           )}
-          <div className="examples">
-            <span>O prueba con data sintética:</span>
-            <button onClick={() => loadExample("regression")} disabled={busy}>
-              Regresión
-            </button>
-            <button
-              onClick={() => loadExample("classification")}
-              disabled={busy}
-            >
-              Clasificación
-            </button>
-            <button
-              onClick={() => loadExample("forecast_monthly")}
-              disabled={busy}
-            >
-              Pronóstico
-            </button>
+          <div className="exampleChooser">
+            <h3>¿Qué quieres probar?</h3>
+            <p>Cada opción abre un Excel normal y prepara una configuración recomendada que podrás revisar y modificar antes de ejecutar.</p>
+            <div className="exampleGrid">{examples.map((item) => <button className="exampleCard" key={item.id} onClick={() => void loadExample(item.id)} disabled={busy}><strong>{item.name}</strong><span>{item.description}</span><small>{item.what_you_learn}</small></button>)}</div>
           </div>
         </section>
       )}
       {step === 2 && profile && (
         <section>
+          {selectedExample && <div className="alert info"><strong>Configuración recomendada aplicada</strong><span>{selectedExample.name}: {selectedExample.what_you_learn} Revisarás cada elección antes de ejecutar.</span></div>}
           <div className="statRow">
             <div>
               <span>FILAS</span>
@@ -338,13 +378,10 @@ export function Wizard() {
                     <tr key={c.column_id}>
                       <td>
                         <strong>{c.display_name}</strong>
-                        <small>{c.column_id}</small>
                       </td>
                       <td>
                         <span className="tag">
-                          {c.inferred_semantic_type === "numeric"
-                            ? "Numérica"
-                            : "Categoría"}
+                          {c.inferred_semantic_type === "numeric" ? "Numérica" : c.inferred_semantic_type === "datetime" ? "Fecha" : "Categoría"}
                         </span>
                       </td>
                       <td>{c.null_count}</td>
@@ -356,8 +393,7 @@ export function Wizard() {
                             defecto.
                           </span>
                         ) : (
-                          c.quality_issue_codes.join(", ") ||
-                          "Sin alertas principales"
+                          c.quality_issue_codes.includes("CONSTANT_OR_EMPTY") ? "No cambia o está vacía; normalmente no ayuda a modelar." : c.quality_issue_codes.includes("MISSING_VALUES") ? "Tiene filas sin valor; la imputación se ajustará solo dentro del entrenamiento." : "Sin alertas principales"
                         )}
                       </td>
                     </tr>
@@ -376,7 +412,7 @@ export function Wizard() {
               <button
                 key={g.id}
                 className={`goalCard ${goal === g.id ? "selected" : ""}`}
-                onClick={() => setGoal(g.id)}
+                onClick={() => { setGoal(g.id); setTarget(""); setDateCol(""); setPrimaryMetric(""); setPreflight(null) }}
               >
                 <span>
                   {g.id === "forecast" ? "◷" : g.id === "explore" ? "⌁" : "◇"}
@@ -395,7 +431,7 @@ export function Wizard() {
                   onChange={(e) => setTarget(e.target.value)}
                 >
                   <option value="">Selecciona una columna</option>
-                  {available.map((c) => (
+                  {targetOptions.map((c) => (
                     <option key={c.column_id} value={c.column_id}>
                       {c.display_name}
                     </option>
@@ -410,7 +446,7 @@ export function Wizard() {
                     onChange={(e) => setDateCol(e.target.value)}
                   >
                     <option value="">Selecciona una columna</option>
-                    {profile.columns.map((c) => (
+                    {profile.columns.filter((c) => c.inferred_semantic_type === "datetime").map((c) => (
                       <option key={c.column_id} value={c.column_id}>
                         {c.display_name}
                       </option>
@@ -429,6 +465,7 @@ export function Wizard() {
               ))}
             </fieldset>
           )}
+          <div className="alert info"><strong>Cómo preparar mi data</strong><span>Usa variables disponibles antes del resultado. Laboratorio ML detecta algunos problemas, imputa y transforma dentro del entrenamiento, pero no entiende tu negocio, no corrige todas las categorías ni evita todo leakage. <Link to="/guide#preparar">Leer la guía</Link>.</span></div>
           <div className="footerActions">
             <button className="button secondary" onClick={() => setStep(2)}>
               Atrás
@@ -471,25 +508,28 @@ export function Wizard() {
             </dl>
             <label>
               Profundidad
-              <select value={depth} onChange={(e) => setDepth(e.target.value)}>
+              <select value={depth} onChange={(e) => { setDepth(e.target.value); setPreflight(null) }}>
                 <option value="quick">Rápido</option>
                 <option value="recommended">Recomendado</option>
               </select>
+              <small>{depth === "quick" ? "Referencia y modelo lineal correspondiente. Primera revisión y menos tiempo." : "Añade Extra Trees y Random Forest. Prueba más familias y toma más tiempo; no garantiza un resultado mejor."}</small>
             </label>
             {goal !== "explore" && (
               <label>
                 Métrica principal
-                <select value={primaryMetric || defaultMetric} onChange={(event) => setPrimaryMetric(event.target.value)}>
+                <select value={primaryMetric || defaultMetric} onChange={(event) => { setPrimaryMetric(event.target.value); setPreflight(null) }}>
                   {resolvedProblem === "classification" ? <><option value="balanced_accuracy">Exactitud balanceada</option><option value="macro_f1">F1 macro</option><option value="accuracy">Exactitud</option></> : <><option value="mae">MAE</option><option value="rmse">RMSE</option></>}
                 </select>
+                <small>{explain(primaryMetric || defaultMetric)}</small>
               </label>
             )}
             {goal === "forecast" && (
               <div className="formGrid">
-                <label>Horizonte mensual<input type="number" min="1" max="24" value={horizon} onChange={(event) => setHorizon(Number(event.target.value))} /></label>
-                <label>Varias filas en un mes<select value={aggregation} onChange={(event) => setAggregation(event.target.value)}><option value="mean">Promedio</option><option value="sum">Suma</option></select></label>
+                <label>Horizonte mensual<input type="number" min="1" max="24" value={horizon} onChange={(event) => { setHorizon(Number(event.target.value)); setPreflight(null) }} /><small>Meses futuros que se estimarán, entre 1 y 24.</small></label>
+                <label>Varias filas en un mes<select value={aggregation} onChange={(event) => { setAggregation(event.target.value); setPreflight(null) }}><option value="mean">Promedio</option><option value="sum">Suma</option></select><small>Solo se aplica cuando el archivo contiene más de una fila por mes.</small></label>
               </div>
             )}
+            {preflight && <div className={`preflightBox ${preflight.can_run ? "ready" : "blocked"}`} role="status"><h3>{preflight.can_run ? "Configuración lista" : "Ajusta la configuración"}</h3><p>{preflight.explanation}</p>{preflight.blockers.map((item) => <div key={item.code}><strong>{item.explanation}</strong><span>{item.suggestion}</span></div>)}{preflight.warnings.map((item) => <div key={item.code}><strong>{item.explanation}</strong><span>{item.suggestion}</span></div>)}</div>}
             <div className="alert warning">
               <strong>Importante</strong>
               <span>
@@ -502,9 +542,7 @@ export function Wizard() {
               <button className="button secondary" onClick={() => setStep(3)}>
                 Atrás
               </button>
-              <button className="button primary" onClick={run} disabled={busy}>
-                Ejecutar análisis
-              </button>
+              {!preflight?.can_run ? <button className="button primary" onClick={checkConfiguration} disabled={busy}>Revisar configuración</button> : <button className="button primary" onClick={run} disabled={busy}>Ejecutar análisis</button>}
             </div>
           </div>
           <aside className="privacyBox">

@@ -18,12 +18,12 @@ export function Home() {
           <span className="eyebrow">Procesamiento local · Sin GPU obligatoria</span>
           <h1>Tu data puede contar una historia.<br /><em>Primero hay que comprobarla.</em></h1>
           <p>
-            Sube tu archivo, elige qué quieres estimar o entender y revisaremos la calidad.
+            Sube tu Excel o archivo de datos, elige qué quieres estimar o entender y revisaremos la calidad.
             Esta beta exploratoria compara referencias y modelos y explica sus límites sin prometer certeza.
           </p>
           <div className="actions">
             <Link className="button primary" to="/new">Analizar mi archivo</Link>
-            <button className="button secondary" onClick={() => navigate('/new?example=regression')}>
+            <button className="button secondary" onClick={() => navigate('/new?examples=1')}>
               Probar con datos de ejemplo
             </button>
           </div>

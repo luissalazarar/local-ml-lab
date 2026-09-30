@@ -2,6 +2,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Home } from '../features/home/Home'
+import { Guide } from '../features/guide/Guide'
 import { App } from './App'
 import { driverBar, humanLabel, metricExplanation, metricLabel } from '../presentation/labels'
 
@@ -14,6 +15,7 @@ describe('contrato básico', () => {
     expect(screen.getByText(/Tus datos se procesan en este equipo/)).toBeTruthy()
     expect(screen.getByText(/Sin GPU obligatoria/)).toBeTruthy()
     expect(screen.getByText(/sin meses faltantes/i)).toBeTruthy()
+    expect(screen.getByRole('button', {name: 'Probar con datos de ejemplo'})).toBeTruthy()
   })
 
   it('presenta marca y autoría como enlaces independientes', async () => {
@@ -29,6 +31,7 @@ describe('contrato básico', () => {
     expect(brand.textContent).toBe('Laboratorio ML')
     expect(brand.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
     expect(author.contains(brand)).toBe(false)
+    expect(screen.getByText('v0.3.0000')).toBeTruthy()
   })
 
   it('marca la sección activa en la navegación principal', async () => {
@@ -50,5 +53,14 @@ describe('contrato básico', () => {
     expect(driverBar(2, 4)).toEqual({ side: 'positive', width: 25 })
     expect(driverBar(-4, 4)).toEqual({ side: 'negative', width: 50 })
     expect(driverBar(0, 4)).toEqual({ side: 'positive', width: 0 })
+  })
+
+  it('explica datasets externos sin descargar ni incrustar contenido', () => {
+    render(<Guide />)
+    const airQuality = screen.getByRole('link', { name: /Air Quality/ })
+    expect(airQuality.getAttribute('target')).toBe('_blank')
+    expect(airQuality.getAttribute('rel')).toBe('noopener noreferrer')
+    expect(screen.getByText(/no descarga datos automáticamente/i)).toBeTruthy()
+    expect(screen.getByText(/Muchos archivos Excel/)).toBeTruthy()
   })
 })

@@ -19,6 +19,7 @@ from local_ml_lab.data.readers import inspect_file, normalize_columns, profile_f
 from local_ml_lab.db.models import Artifact, Dataset, DatasetVersion, Event, Job, Preflight, Run
 from local_ml_lab.db.session import SessionLocal
 from local_ml_lab.ml.engine import analyze, resolve_primary_metric
+from local_ml_lab.preflight import evaluate_preflight
 from local_ml_lab.reports import create_excel, create_pdf, sha
 from local_ml_lab.settings import settings
 
@@ -269,16 +270,14 @@ def preflight(db, job):
         config["primary_metric"] = resolve_primary_metric(
             config["problem_type"], config.get("primary_metric")
         )
-    warnings = []
-    if version.row_count < 20:
-        warnings.append("SMALL_DATASET")
-    if profile.get("duplicate_count"):
-        warnings.append("DEPENDENT_DUPLICATES_REQUIRE_REVIEW")
+    frame = pd.read_parquet(settings.data_root / version.canonical_ref)
+    summary = evaluate_preflight(frame, profile, config)
+    config["_preflight"] = summary
     pf.resolved_config = config
     pf.config_sha256 = canonical_hash(config)
-    pf.can_run = True
+    pf.can_run = summary["can_run"]
     pf.status = "ready"
-    pf.warning_codes = warnings
+    pf.warning_codes = [warning["code"] for warning in summary["warnings"]]
     db.commit()
 
 

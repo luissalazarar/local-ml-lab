@@ -62,6 +62,14 @@ def selected_model_name(result):
     )
 
 
+def release_label(result):
+    version = str(result.get("engine_version") or "")
+    parts = version.split(".")
+    if len(parts) == 3 and all(part.isdigit() for part in parts):
+        return f"v{int(parts[0])}.{int(parts[1])}.{int(parts[2]):04d}"
+    return version or "No disponible"
+
+
 def safe_text(value) -> str:
     text = "" if value is None else str(value)
     if text.startswith(("=", "+", "-", "@", "\t", "\r")) and not is_number(text):
@@ -117,7 +125,7 @@ def create_excel(result: dict, path: Path) -> None:
         ("Métrica principal", presentation_label(result.get("primary_metric_id"))),
         ("Confiabilidad", result.get("reliability", {}).get("primary_level")),
         ("Significado", "Solidez de la evaluación; no es una probabilidad de acierto."),
-        ("Versión", result.get("engine_version")),
+        ("Versión de Laboratorio ML", release_label(result)),
     ]
     for index, (key, value) in enumerate(rows, 3):
         summary.write(index, 0, key, header)
@@ -157,24 +165,40 @@ def create_excel(result: dict, path: Path) -> None:
     )
     write_table(
         workbook.get_worksheet_by_name("11_Diccionario"),
-        [
-            {
-                "termino": "Confiabilidad",
-                "definicion": "Solidez de la evaluación; no es probabilidad de acierto.",
-            },
-            {"termino": "MAE", "definicion": "Error absoluto medio, en la unidad del resultado."},
-            {"termino": "RMSE", "definicion": "Raíz del error cuadrático medio; penaliza más los errores grandes."},
-            {"termino": "R²", "definicion": "No es porcentaje de acierto y puede ser negativo."},
-            {"termino": "Exactitud balanceada", "definicion": "Promedio del acierto por clase."},
-            {"termino": "Error numérico", "definicion": "Predicho menos real."},
-            {
-                "termino": "selection_oof",
-                "definicion": "Predicción de validación con datos no usados para entrenar ese ajuste; también usada para seleccionar.",
-            },
-        ],
+        dictionary_rows(result),
         header,
     )
     workbook.close()
+
+
+def dictionary_rows(result):
+    definitions = {
+        "Confiabilidad": "Solidez de la evaluación; no es probabilidad de acierto.",
+        "MAE": "Error absoluto promedio, en la misma unidad del resultado; más bajo es mejor.",
+        "RMSE": "Error que penaliza más los errores grandes; más bajo es mejor.",
+        "R²": "No es porcentaje; 1 es ajuste perfecto, cerca de 0 no mejora la referencia del promedio y puede ser negativo.",
+        "Exactitud": "Proporción total de aciertos; puede engañar si una clase domina.",
+        "Exactitud balanceada": "Promedia el acierto de cada clase; más alto es mejor.",
+        "F1 macro": "Calcula F1 por clase y les da el mismo peso; más alto es mejor.",
+        "Soporte": "Cantidad de casos reales de cada categoría.",
+        "Matriz de confusión": "Fila es real, columna es predicho y la diagonal contiene aciertos.",
+        "Error": "Predicho menos real.",
+        "Importancia predictiva": "Cambio de la métrica al alterar una variable fuera del entrenamiento; no demuestra causalidad.",
+        "Validación": "Datos apartados de cada ajuste; aquí también participan en la selección.",
+        "Pronóstico futuro": "Meses todavía sin valor real disponible; V1 no incluye intervalos.",
+    }
+    terms = {"Confiabilidad", "Validación"}
+    metric_terms = {"mae": "MAE", "rmse": "RMSE", "r2": "R²", "accuracy": "Exactitud", "balanced_accuracy": "Exactitud balanceada", "macro_f1": "F1 macro"}
+    terms.update(metric_terms.get(row.get("metric_id"), "") for row in result.get("evaluation_metrics", []))
+    if result.get("predictions"):
+        terms.add("Error")
+    if result.get("drivers"):
+        terms.add("Importancia predictiva")
+    if result.get("problem_type") == "classification":
+        terms.update({"Soporte", "Matriz de confusión"})
+    if result.get("problem_type") == "forecasting":
+        terms.add("Pronóstico futuro")
+    return [{"termino": term, "definicion": definitions[term]} for term in definitions if term in terms]
 
 
 def cleaning_rows(columns):
@@ -251,6 +275,7 @@ def create_pdf(result: dict, path: Path) -> None:
     story = [
         Paragraph("Laboratorio ML", styles["Title"]),
         Paragraph("Desarrollado por Luis Salazar", styles["BodyText"]),
+        Paragraph(release_label(result), styles["BodyText"]),
         Paragraph("Reporte de análisis local", styles["Heading2"]),
         Spacer(1, 8 * mm),
     ]
@@ -273,6 +298,11 @@ def create_pdf(result: dict, path: Path) -> None:
                 Spacer(1, 4 * mm),
             ]
         )
+    story += [
+        Paragraph("Cómo leer este resultado", styles["Heading2"]),
+        Paragraph(paragraph_text(report_reading_help(result)), styles["BodyText"]),
+        Spacer(1, 4 * mm),
+    ]
     metrics = [["Métrica", "Valor", "Población", "Rol"]] + [
         [
             presentation_label(metric.get("metric_id")) if metric.get("metric_id") == "r2" else metric["name"],
@@ -403,6 +433,21 @@ def footer(canvas, document):
     canvas.drawString(18 * mm, 10 * mm, "Laboratorio ML · Desarrollado por Luis Salazar")
     canvas.drawRightString(192 * mm, 10 * mm, f"Página {document.page}")
     canvas.restoreState()
+
+
+def report_reading_help(result):
+    metric = presentation_label(result.get("primary_metric_id"))
+    problem = result.get("problem_type")
+    direction = "más bajo es mejor" if result.get("primary_metric_id") in {"mae", "rmse"} else "más alto es mejor"
+    if problem == "classification":
+        extra = " En la matriz, fila es real, columna es predicho y soporte es la cantidad de casos reales."
+    elif problem == "regression":
+        extra = " El error es predicho menos real."
+    elif problem == "forecasting":
+        extra = " El futuro aún no tiene valor real y V1 no muestra intervalos."
+    else:
+        extra = " La exploración no produce métricas predictivas."
+    return f"La métrica usada es {metric}: {direction}. Confiabilidad describe la evaluación, no una probabilidad. La referencia muestra si el modelo aportó frente a una regla sencilla.{extra}"
 
 
 def sha(path: Path) -> str:

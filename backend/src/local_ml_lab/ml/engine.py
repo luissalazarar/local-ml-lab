@@ -10,6 +10,8 @@ from sklearn.model_selection import KFold, StratifiedKFold, cross_val_predict
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
+from local_ml_lab import __version__
+
 from .metrics import classification_metrics, regression_metrics
 from .registry import specs
 
@@ -73,7 +75,7 @@ def analyze(frame: pd.DataFrame, profile: dict, config: dict, progress=lambda *_
     candidates = []
     prediction_sets = {}
     for idx, spec in enumerate(model_specs, 1):
-        progress("fit", f"Probando {spec.display_name}", idx - 1, len(model_specs))
+        progress("fit", f"Comparando modelos · {spec.display_name}", idx - 1, len(model_specs))
         pipeline = make_pipeline(transformer, spec, config.get("seed", 42) + idx)
         try:
             pred = cross_val_predict(pipeline, x, y, cv=splits, method="predict")
@@ -254,7 +256,7 @@ def fold_permutation_importance(
     for fold, (train_indices, validation_indices) in enumerate(splits, 1):
         progress(
             "explain",
-            f"Midiendo importancia fuera de train · fold {fold}",
+            f"Midiendo importancia · partición de validación {fold} de {len(splits)}",
             fold - 1,
             len(splits),
         )
@@ -472,7 +474,7 @@ def build_result(
         limitations.append("El alcance de forecasting es una sola serie mensual regular.")
     return {
         "schema_version": "1.1",
-        "engine_version": "0.2.0",
+        "engine_version": __version__,
         "goal": config["goal"],
         "problem_type": config["problem_type"],
         "primary_metric_id": primary_metric,
@@ -525,7 +527,7 @@ def build_result(
 def exploration_result(profile, config):
     return {
         "schema_version": "1.1",
-        "engine_version": "0.2.0",
+        "engine_version": __version__,
         "goal": config["goal"],
         "problem_type": config["problem_type"],
         "primary_metric_id": None,

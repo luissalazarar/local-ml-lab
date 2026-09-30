@@ -2,8 +2,15 @@
 
 ## Sin publicar
 
-- Renovada la interfaz sin cambios operativos: bloque de marca con autoría en línea, navegación segmentada con sección activa, radios y sombras unificados, tarjetas de capacidades en mosaico, pestañas y pasos en píldora, tablas y estados más legibles, y movimiento que respeta `prefers-reduced-motion`.
-- Reemplazado el distintivo `LM` por un símbolo propio (hoja de datos con una celda apartada donde se comprueba el patrón) en el encabezado y el favicon, con variantes monocromática, inversa y reducida, PNG transparente y componente `BrandSymbol`.
+- Sin cambios todavía.
+
+## 0.3.0 — 2026-09-30
+
+- Convertida la experiencia principal en Excel-first, con guía de estructura, selección de hoja y fila de encabezados, y mensajes educativos en perfilado, preflight, progreso y resultados.
+- Añadidos cinco ejemplos guiados reproducibles en XLSX para regresión, clasificación, pronóstico, drivers y exploración, con presets revisables y validaciones de configuraciones incoherentes.
+- Incorporada la sección Guía con conceptos, preparación de data, métricas, modelos, límites y enlaces públicos para practicar.
+- Añadido `version.json` como fuente de verdad, mirrors SemVer, chequeo automático, versión visible en UI y release discreta en reportes nuevos.
+- Renovada la identidad visual con símbolo propio, autoría, navegación, responsive y movimiento reducido, sin cambiar los contratos analíticos.
 
 ## 0.2.0 — 2026-09-30
 

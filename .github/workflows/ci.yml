@@ -9,6 +9,12 @@ permissions:
   contents: read
 
 jobs:
+  version:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/check_version.py
+
   backend:
     runs-on: ubuntu-24.04
     steps:
@@ -59,6 +65,8 @@ jobs:
       - name: Run product, cancellation and report smokes
         run: |
           APP_URL=http://localhost:33000 python3 scripts/smoke.py
+          APP_URL=http://localhost:33000 python3 scripts/examples_smoke.py
+          APP_URL=http://localhost:33000 python3 scripts/excel_smoke.py
           APP_URL=http://localhost:33000 python3 scripts/cancel_smoke.py
           docker compose -p local-ml-lab-ci exec -T worker python - < scripts/verify_reports.py
       - name: Prove durable recovery when the queue is unavailable

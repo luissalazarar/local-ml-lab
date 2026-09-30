@@ -52,13 +52,17 @@ def wait(job_id, timeout=240):
     raise TimeoutError(job_id)
 
 
-def analyze_example(example, problem, target, *, date=None, primary="mae"):
+def analyze_example(example, problem, target_name, *, date_name=None, primary="mae"):
+    preset = next(item for item in call("/examples")["items"] if item["id"] == example)
     dataset = call(f"/datasets/from-example/{example}", "POST")
     wait(dataset["job_id"])
-    version = call(f"/datasets/{dataset['dataset_id']}/versions", "POST", {})
+    version = call(f"/datasets/{dataset['dataset_id']}/versions", "POST", preset["parser_options"])
     wait(version["job_id"])
     version_id = version["dataset_version_id"]
     profile = call(f"/dataset-versions/{version_id}/profile")
+    by_name = {column["display_name"]: column["column_id"] for column in profile["columns"]}
+    target = by_name[target_name]
+    date = by_name[date_name] if date_name else None
     config = {
         "schema_version": "1.0",
         "dataset_version_id": version_id,
@@ -106,13 +110,13 @@ def analyze_example(example, problem, target, *, date=None, primary="mae"):
 
 
 regression_dataset, regression_run, regression = analyze_example(
-    "regression", "regression", "c0005"
+    "regression", "regression", "Gasto_mensual"
 )
 classification_dataset, classification_run, classification = analyze_example(
-    "classification", "classification", "c0005", primary="balanced_accuracy"
+    "classification", "classification", "Resultado", primary="balanced_accuracy"
 )
 forecast_dataset, forecast_run, forecast = analyze_example(
-    "forecast_monthly", "forecasting", "c0002", date="c0001"
+    "forecast_monthly", "forecasting", "Ventas", date_name="Mes"
 )
 assert regression["drivers"] and all(
     driver["fit_scope"] == "fold_train_only" for driver in regression["drivers"]
