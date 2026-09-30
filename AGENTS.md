@@ -9,6 +9,8 @@ Este repositorio implementa una aplicación local-first y CPU-first para analiza
 - `queue`: Valkey transporta únicamente identificadores de jobs.
 - `/data`: volumen persistente compartido por API y worker; SQLite es la fuente de verdad.
 - `analysis_result.json`: snapshot analítico inmutable. Los reportes y explicaciones no lo reescriben.
+- Forecasting V1 significa exclusivamente una serie mensual regular, sin huecos rellenados ni bandas inventadas.
+- La validación tabular aleatoria requiere registros independientes; rechaza o declara fuera de alcance grupos y usos temporales.
 
 ## Invariantes
 
@@ -30,12 +32,14 @@ docker compose up --build -d
 docker compose ps
 python scripts/smoke.py
 docker compose logs --tail=100 api worker
+python3 scripts/cancel_smoke.py
 ```
 
 Backend: `cd backend && uv sync --frozen --extra dev && uv run pytest && uv run ruff check .`.
 Frontend: `cd frontend && npm ci && npm run typecheck && npm run test -- --run && npm run build`.
 
+Antes de publicar, prueba desde un checkout limpio con nombre de proyecto, volumen y puerto Compose separados. Verifica descargas abriendo XLSX/PDF, reinicio persistente, cola caída/recuperada y ausencia de datos privados. No afirmes compatibilidad con una plataforma no probada.
+
 Al agregar un modelo, declarar capacidades en el registry, usar el pipeline por fold, respetar clases/splits, acotar recursos y probar fallo/timeout y shapes. No cambies métricas, políticas o umbrales silenciosamente. Para cambios en contratos, sincroniza frontend, API, exportaciones y documentación.
 
 Reporta con precisión qué se ejecutó y qué no. Usa datasets pequeños; no entrenes exhaustivo para verificar cambios ordinarios. Nunca imprimas claves, cookies, uploads ni celdas privadas en logs.
-

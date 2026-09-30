@@ -17,6 +17,7 @@ dependencies = [
   "pandas==2.3.2",
   "psutil==7.0.0",
   "pyarrow==21.0.0",
+  "pypdf==6.0.0",
   "pydantic-settings==2.10.1",
   "python-multipart==0.0.20",
   "redis==6.4.0",

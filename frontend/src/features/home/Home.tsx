@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 const capabilities = [
   ['Estimar un valor', 'Duración, cantidad, consumo o costo.'],
   ['Predecir una categoría', 'Sí/no o varias categorías.'],
-  ['Estimar próximas fechas', 'Una serie diaria, semanal o mensual.'],
+  ['Estimar próximos meses', 'Una serie mensual regular, sin comprimir huecos.'],
   ['Entender variables útiles', 'Importancia predictiva, no causalidad.'],
   ['Explorar la data', 'Calidad, tipos y problemas sin entrenar.'],
 ]

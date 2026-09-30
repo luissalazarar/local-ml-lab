@@ -10,7 +10,7 @@ from fastapi import Depends, FastAPI, File, HTTPException, Request, Response, Up
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from redis import Redis
 from rq import Worker
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from local_ml_lab import __version__
@@ -88,6 +88,21 @@ def serialize(obj):
         if hasattr(value, "isoformat"):
             data[key] = value.isoformat()
     return data
+
+
+def dispatch_or_503(db: Session, job: Job) -> None:
+    if enqueue(job.id):
+        return
+    job.error_code = "QUEUE_UNAVAILABLE_PENDING_RECOVERY"
+    db.commit()
+    raise HTTPException(
+        503,
+        detail={
+            "code": "QUEUE_UNAVAILABLE",
+            "message": "La cola no está disponible; el trabajo quedó pendiente de recuperación.",
+            "job_id": job.id,
+        },
+    )
 
 
 @app.get("/api/v1/health/live")
@@ -224,7 +239,7 @@ def from_example(example_id: str, db: Session = Depends(get_db)):
     )
     db.add(job)
     db.commit()
-    enqueue(job.id)
+    dispatch_or_503(db, job)
     return {"dataset_id": dataset.id, "job_id": job.id}
 
 
@@ -258,7 +273,7 @@ async def upload_dataset(file: UploadFile = File(...), db: Session = Depends(get
     )
     db.add(job)
     db.commit()
-    enqueue(job.id)
+    dispatch_or_503(db, job)
     return {"dataset_id": dataset.id, "job_id": job.id}
 
 
@@ -303,7 +318,7 @@ def create_version(dataset_id: str, options: dict | None = None, db: Session = D
     job = Job(job_type="prepare_dataset", dataset_version_id=version.id, payload={})
     db.add(job)
     db.commit()
-    enqueue(job.id)
+    dispatch_or_503(db, job)
     return {"dataset_version_id": version.id, "job_id": job.id}
 
 
@@ -355,7 +370,7 @@ def create_preflight(body: PreflightRequest, db: Session = Depends(get_db)):
     db.flush()
     job.payload = {"preflight_id": pf.id}
     db.commit()
-    enqueue(job.id)
+    dispatch_or_503(db, job)
     return {"preflight_id": pf.id, "job_id": job.id}
 
 
@@ -374,6 +389,13 @@ def create_run(body: RunRequest, db: Session = Depends(get_db)):
         raise HTTPException(409, "Preflight no listo")
     if pf.config_sha256 != body.config_sha256:
         raise HTTPException(409, "Configuración cambió")
+    existing = db.scalar(
+        select(Run)
+        .where(Run.preflight_id == pf.id, Run.status.in_(["queued", "running", "succeeded"]))
+        .order_by(Run.created_at.desc())
+    )
+    if existing and existing.latest_job_id:
+        return {"run_id": existing.id, "job_id": existing.latest_job_id, "deduplicated": True}
     cfg = pf.resolved_config
     run = Run(
         dataset_version_id=pf.dataset_version_id,
@@ -391,7 +413,7 @@ def create_run(body: RunRequest, db: Session = Depends(get_db)):
     db.flush()
     run.latest_job_id = job.id
     db.commit()
-    enqueue(job.id)
+    dispatch_or_503(db, job)
     return {"run_id": run.id, "job_id": job.id}
 
 
@@ -411,6 +433,65 @@ def get_run(run_id: str, db: Session = Depends(get_db)):
     if not obj:
         raise HTTPException(404)
     return serialize(obj)
+
+
+@app.delete("/api/v1/runs/{run_id}")
+def delete_run(run_id: str, db: Session = Depends(get_db)):
+    run = db.get(Run, run_id)
+    if not run:
+        raise HTTPException(404)
+    jobs = db.scalars(select(Job).where(Job.run_id == run_id)).all()
+    if any(job.status in {"queued", "running", "cancel_requested"} for job in jobs):
+        raise HTTPException(409, "Cancela y espera que terminen los trabajos activos")
+    job_ids = [job.id for job in jobs]
+    if job_ids:
+        db.execute(delete(Event).where(Event.job_id.in_(job_ids)))
+        db.execute(delete(Job).where(Job.id.in_(job_ids)))
+    db.execute(delete(Artifact).where(Artifact.run_id == run_id))
+    db.execute(delete(Run).where(Run.id == run_id))
+    db.commit()
+    run_dir = settings.data_root / "runs" / run_id
+    if run_dir.exists():
+        shutil.rmtree(run_dir)
+    return {"status": "deleted", "run_id": run_id}
+
+
+@app.delete("/api/v1/datasets/{dataset_id}")
+def delete_dataset(dataset_id: str, db: Session = Depends(get_db)):
+    dataset = db.get(Dataset, dataset_id)
+    if not dataset:
+        raise HTTPException(404)
+    versions = db.scalars(
+        select(DatasetVersion).where(DatasetVersion.dataset_id == dataset_id)
+    ).all()
+    version_ids = [version.id for version in versions]
+    if version_ids and db.scalar(select(Run).where(Run.dataset_version_id.in_(version_ids))):
+        raise HTTPException(409, "El dataset conserva análisis; elimina primero esos runs")
+    jobs = db.scalars(select(Job)).all()
+    related_jobs = [
+        job
+        for job in jobs
+        if job.dataset_version_id in version_ids or job.payload.get("dataset_id") == dataset_id
+    ]
+    if any(job.status in {"queued", "running", "cancel_requested"} for job in related_jobs):
+        raise HTTPException(409, "El dataset tiene trabajos activos")
+    related_job_ids = [job.id for job in related_jobs]
+    if related_job_ids:
+        db.execute(delete(Event).where(Event.job_id.in_(related_job_ids)))
+        db.execute(delete(Job).where(Job.id.in_(related_job_ids)))
+    if version_ids:
+        db.execute(delete(Preflight).where(Preflight.dataset_version_id.in_(version_ids)))
+        db.execute(delete(DatasetVersion).where(DatasetVersion.id.in_(version_ids)))
+    db.execute(delete(Dataset).where(Dataset.id == dataset_id))
+    db.commit()
+    upload_dir = settings.data_root / "uploads" / dataset_id
+    if upload_dir.exists():
+        shutil.rmtree(upload_dir)
+    for version_id in version_ids:
+        version_dir = settings.data_root / "datasets" / version_id
+        if version_dir.exists():
+            shutil.rmtree(version_dir)
+    return {"status": "deleted", "dataset_id": dataset_id}
 
 
 @app.get("/api/v1/runs/{run_id}/result")
@@ -471,10 +552,23 @@ def export_run(run_id: str, body: ExportRequest, db: Session = Depends(get_db)):
     run = db.get(Run, run_id)
     if not run or not run.result_available:
         raise HTTPException(409, "Resultado no disponible")
-    job = Job(job_type="render_export", run_id=run_id, payload={"formats": body.formats})
+    formats = list(dict.fromkeys(body.formats))
+    if not formats:
+        raise HTTPException(422, "Elige al menos un formato")
+    active_exports = db.scalars(
+        select(Job).where(
+            Job.run_id == run_id,
+            Job.job_type == "render_export",
+            Job.status.in_(["queued", "running", "cancel_requested"]),
+        )
+    ).all()
+    existing = next((item for item in active_exports if item.payload.get("formats") == formats), None)
+    if existing:
+        return {"job_id": existing.id, "deduplicated": True}
+    job = Job(job_type="render_export", run_id=run_id, payload={"formats": formats})
     db.add(job)
     db.commit()
-    enqueue(job.id)
+    dispatch_or_503(db, job)
     return {"job_id": job.id}
 
 
@@ -483,7 +577,11 @@ def artifacts(run_id: str, db: Session = Depends(get_db)):
     return {
         "items": [
             serialize(x)
-            for x in db.scalars(select(Artifact).where(Artifact.run_id == run_id)).all()
+            for x in db.scalars(
+                select(Artifact)
+                .where(Artifact.run_id == run_id)
+                .order_by(Artifact.created_at.desc())
+            ).all()
         ]
     }
 

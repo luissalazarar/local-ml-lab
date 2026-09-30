@@ -9,7 +9,7 @@ El análisis corre localmente en tu equipo y no necesitas una API key.
 ## Qué puedes hacer
 
 - Explorar CSV, XLSX y Parquet con tipos primitivos.
-- Estimar un valor, predecir categorías o pronosticar una serie regular.
+- Estimar un valor, predecir categorías o pronosticar una serie mensual regular.
 - Comparar referencias simples, modelos lineales y árboles.
 - Revisar calidad, exclusiones, métricas, candidatos fallidos y límites.
 - Exportar Excel, PDF y contexto TXT/Markdown/JSON para cualquier IA.
@@ -17,7 +17,11 @@ El análisis corre localmente en tu equipo y no necesitas una API key.
 
 ## Demo visual
 
-Las capturas reales se generarán desde la instalación verificada en `docs/screenshots/`. No se incluyen mockups que simulen funciones inexistentes.
+Capturas tomadas de la instalación Docker verificada, sin mockups:
+
+![Inicio de Laboratorio ML](docs/screenshots/home.png)
+
+![Resultado real de regresión](docs/screenshots/regression-result.png)
 
 ## Quick start
 
@@ -39,7 +43,7 @@ En Windows también puedes ejecutar `powershell -ExecutionPolicy Bypass -File sc
 4. Revisa el preflight y ejecuta.
 5. Compara confiabilidad, referencia, métricas, drivers y exportaciones.
 
-La confiabilidad resume la solidez de la evaluación; no es una probabilidad de acierto. Una referencia sencilla puede ganar. Una importancia predictiva no demuestra causalidad.
+La confiabilidad resume la solidez de la evaluación; no es una probabilidad de acierto. Una referencia sencilla puede ganar. La importancia se calcula fuera del train de cada fold, pero esa validación también participa en la selección y no demuestra causalidad.
 
 ## Privacidad y OpenAI opcional
 
@@ -47,11 +51,11 @@ El núcleo funciona offline después de descargar imágenes y dependencias. Los 
 
 ## Exportaciones
 
-Excel contiene resumen, calidad, limpieza, configuración, candidatos, métricas, predicciones, drivers, errores, advertencias, validación y diccionario. PDF contiene el resumen humano y límites. Ambos nacen del mismo snapshot analítico inmutable.
+Excel contiene resumen, calidad, limpieza real, configuración, candidatos, métricas, predicciones, drivers, errores, advertencias, validación y diccionario. PDF contiene métricas, gráficos, drivers y límites. Ambos nacen del mismo snapshot analítico inmutable; cada exportación tiene identidad y archivo propios.
 
 ## Limitaciones y qué no hace
 
-V1 no ofrece inferencia por lotes sobre archivos nuevos, clustering, detección de anomalías por modelos, calibración formal, intervalos conformales, SHAP, tuning Optuna completo, envío directo a OpenAI, GPU, deep learning, multiusuario, despliegue público ni causalidad. Forecasting acepta una sola serie sin covariables externas futuras. Consulta [ROADMAP](docs/ROADMAP.md).
+V1 no ofrece inferencia por lotes, clustering, detección de anomalías por modelos, calibración formal, intervalos conformales, SHAP, tuning Optuna completo, envío directo a OpenAI, GPU, deep learning, multiusuario, despliegue público ni causalidad. Forecasting acepta una sola serie mensual regular sin covariables; exige calendario continuo, no rellena huecos y permite sumar o promediar duplicados mensuales. La validación tabular supone registros independientes: grupos, entidades repetidas y usos temporales no están soportados. Consulta [ROADMAP](docs/ROADMAP.md).
 
 ## Ejemplos
 
@@ -83,9 +87,9 @@ V1 no ofrece inferencia por lotes sobre archivos nuevos, clustering, detección 
 
 **¿Cómo recupero el historial?** Abre Historial; el volumen persiste tras `docker compose down`.
 
-**¿Cómo borro mis datos?** Elimina runs inactivos desde la interfaz. No uses borrado del volumen como solución rutinaria.
+**¿Cómo borro mis datos?** Elimina runs inactivos en Historial y datasets sin referencias en Estado. La API bloquea el borrado si existen jobs activos o análisis dependientes.
 
-**¿Qué ocurre si se cancela un modelo?** Se detiene el job; resultados ya congelados permanecen, y los parciales no se presentan como completos.
+**¿Qué ocurre si se cancela un modelo?** El worker termina el proceso de análisis y sus descendientes dentro de un límite acotado. El job queda `cancelled`, no `failed`, y nunca publica un parcial como completo.
 
 **¿Evaluación y forecast futuro son lo mismo?** No. Evaluación compara contra datos conocidos fuera de train; forecast futuro no tiene valor real disponible todavía.
 
@@ -96,3 +100,11 @@ Ejecuta `scripts/doctor.ps1` o `scripts/doctor.sh`. Para comandos de desarrollo,
 Prompt para asistencia:
 
 > Obtén este repositorio usando la URL que acompaña esta solicitud. Lee AGENTS.md y docs/AI_SETUP.md. Instálalo con Docker Compose. Verifica la API, el worker, la cola y el frontend. Ejecuta el smoke test sintético pequeño. Abre la aplicación en localhost si tu entorno lo permite. No necesitas configurar OpenAI. Conserva los datos existentes. No cambies el código salvo que sea necesario para compatibilidad y explica cualquier cambio. Si Docker no está instalado, indícame los pasos oficiales necesarios. Al terminar, informa la URL, el estado real de los servicios, las pruebas ejecutadas y cualquier limitación.
+
+## Plataformas verificadas
+
+- macOS Apple Silicon (`arm64`, Apple M1): build, Compose, regresión, clasificación, forecast, cancelación, exportaciones y reinicio verificados el 30-09-2026.
+- Linux `amd64`: verificado por CI en cada PR/push a `master`.
+- Windows: scripts disponibles, pero esta versión no declara una verificación física completada.
+
+El cierre reproducible de cada hallazgo está en [AUDIT_2026-09-30](docs/AUDIT_2026-09-30.md).

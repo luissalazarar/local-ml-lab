@@ -13,7 +13,7 @@ COPY backend/src ./src
 COPY backend/alembic.ini ./alembic.ini
 COPY backend/src/local_ml_lab/db/migrations ./src/local_ml_lab/db/migrations
 COPY examples ./examples
-COPY docker/api-entrypoint.sh docker/worker-entrypoint.sh /usr/local/bin/
+COPY --chmod=755 docker/api-entrypoint.sh docker/worker-entrypoint.sh /usr/local/bin/
 ENV PATH="/app/.venv/bin:$PATH" PYTHONPATH=/app/src
 USER 10001:10001
 EXPOSE 8000

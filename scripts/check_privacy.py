@@ -9,7 +9,8 @@ patterns = {
 bad = []
 for path in root.rglob("*"):
     if not path.is_file() or any(
-        part == "node_modules" or part.startswith(".git") for part in path.parts
+        part in {"node_modules", ".venv", "dist"} or part.startswith(".git")
+        for part in path.parts
     ):
         continue
     if path.suffix.lower() not in {".py", ".ts", ".tsx", ".md", ".yaml", ".yml", ".json", ".example"}:

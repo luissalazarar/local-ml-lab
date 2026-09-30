@@ -6,7 +6,9 @@ missing = [name for name in required if not (root / name).exists()]
 if missing:
     raise SystemExit("Faltan archivos: " + ", ".join(missing))
 for path in root.rglob("*.py"):
-    if path.name == "validate_static.py":
+    if path.name == "validate_static.py" or any(
+        part in {".venv", "node_modules", "dist"} for part in path.parts
+    ):
         continue
     text = path.read_text(encoding="utf-8")
     if "NotImplementedError" in text:
