@@ -1,5 +1,9 @@
 # Changelog
 
+## Sin publicar
+
+- Reemplazado el distintivo `LM` por un símbolo propio (hoja de datos con una celda apartada donde se comprueba el patrón) en el encabezado y el favicon, con variantes monocromática, inversa y reducida, PNG transparente y componente `BrandSymbol`.
+
 ## 0.2.0 — 2026-09-30
 
 - Recuperado y versionado el lector CSV/XLSX/Parquet con límites, selección de hoja/header y parsing conservador.

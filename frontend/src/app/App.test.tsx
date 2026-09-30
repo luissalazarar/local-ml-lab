@@ -25,6 +25,10 @@ describe('contrato básico', () => {
     expect(author.getAttribute('target')).toBe('_blank')
     expect(author.getAttribute('rel')).toBe('noopener noreferrer')
     expect(screen.getByRole('link', { name: 'Laboratorio ML' }).contains(author)).toBe(false)
+    const brand = screen.getByRole('link', { name: 'Laboratorio ML' })
+    expect(brand.textContent).toBe('Laboratorio ML')
+    expect(brand.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
+    expect(author.contains(brand)).toBe(false)
   })
 
   it('traduce roles y explica métricas sin cambiar identificadores', () => {

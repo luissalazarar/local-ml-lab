@@ -6,7 +6,7 @@ Sube tu data, dinos qué quieres estimar o entender y la aplicación revisará s
 
 El análisis corre localmente en tu equipo y no necesitas una API key.
 
-La identidad visual, los tokens y el estado de licencia de Mont están documentados en [Identidad visual](docs/VISUAL_IDENTITY.md).
+La identidad visual (símbolo, variantes y tamaños de uso), los tokens y el estado de licencia de Mont están documentados en [Identidad visual](docs/VISUAL_IDENTITY.md).
 
 ## Qué puedes hacer
 
