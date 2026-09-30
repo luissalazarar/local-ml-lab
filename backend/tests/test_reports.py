@@ -15,7 +15,7 @@ def result_fixture():
         "reliability": {"primary_level": "low"},
         "validation_plan": {"evidence_mode": "selection_cv"},
         "evaluation_metrics": [
-            {"name": "MAE", "value": 1.5, "n_used": 2, "evaluation_role": "selection_oof"}
+            {"metric_id": "mae", "name": "MAE", "value": 1.5, "n_used": 2, "evaluation_role": "selection_oof"}
         ],
         "data_quality": {
             "columns": [
@@ -28,7 +28,7 @@ def result_fixture():
             ]
         },
         "resolved_config": {"primary_metric": "mae"},
-        "candidates": [{"model_id": "ridge", "status": "succeeded"}],
+        "candidates": [{"model_id": "ridge", "display_name": "Regresión Ridge", "status": "succeeded"}],
         "predictions": [
             {"actual": 10.0, "predicted": 11.0, "error": 1.0},
             {"actual": 20.0, "predicted": 18.0, "error": -2.0},
@@ -55,8 +55,13 @@ def test_excel_and_pdf_open_with_real_content(tmp_path):
         str(cell.value) for row in workbook["08_Errores"].iter_rows() for cell in row
     }
     assert len(list(workbook["06_Predicciones"].iter_rows(values_only=True))) == 3
+    summary_values = {str(cell.value) for row in workbook["00_Resumen"].iter_rows() for cell in row}
+    assert "Desarrollado por Luis Salazar" in summary_values
+    assert "Regresión Ridge" in summary_values
     reader = PdfReader(pdf_path)
     text = "\n".join(page.extract_text() or "" for page in reader.pages)
     assert "Métrica principal" in text
     assert "Variables predictivas" in text
+    assert "Desarrollado por Luis Salazar" in text
+    assert "Regresión Ridge" in text
     assert len(pdf_path.read_bytes()) > 2_000

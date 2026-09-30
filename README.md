@@ -6,6 +6,8 @@ Sube tu data, dinos qué quieres estimar o entender y la aplicación revisará s
 
 El análisis corre localmente en tu equipo y no necesitas una API key.
 
+La identidad visual, los tokens y el estado de licencia de Mont están documentados en [Identidad visual](docs/VISUAL_IDENTITY.md).
+
 ## Qué puedes hacer
 
 - Explorar CSV, XLSX y Parquet con tipos primitivos.
@@ -22,6 +24,8 @@ Capturas tomadas de la instalación Docker verificada, sin mockups:
 ![Inicio de Laboratorio ML](docs/screenshots/home.png)
 
 ![Resultado real de regresión](docs/screenshots/regression-result.png)
+
+![Inicio móvil de Laboratorio ML](docs/screenshots/mobile-home.png)
 
 ## Quick start
 

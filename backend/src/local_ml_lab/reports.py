@@ -23,6 +23,44 @@ from reportlab.platypus import (
 matplotlib.use("Agg")
 from matplotlib import pyplot as plt  # noqa: E402
 
+PETROLEUM = "#054D61"
+TURQUOISE = "#049990"
+LIGHT_GRAY = "#EDEDED"
+ORANGE = "#EB5B27"
+BLUE = "#0871B8"
+
+PRESENTATION_LABELS = {
+    "selection_oof": "Predicción de validación",
+    "selection_validation": "Validación de selección",
+    "selection_validation_folds": "Particiones de validación",
+    "selection_monthly_holdout": "Validación mensual usada para seleccionar",
+    "selection_cv": "Validación cruzada usada para seleccionar",
+    "history": "Histórico observado",
+    "forecast_future": "Pronóstico futuro",
+    "target_unit": "Unidades del resultado",
+    "score": "Sin unidad",
+    "r2": "R²",
+    "balanced_accuracy": "Exactitud balanceada",
+}
+
+
+def presentation_label(value):
+    if value is None:
+        return "No disponible"
+    return PRESENTATION_LABELS.get(str(value), str(value))
+
+
+def selected_model_name(result):
+    model_id = result.get("selection_decision", {}).get("model_id")
+    return next(
+        (
+            candidate.get("display_name") or candidate.get("model_id")
+            for candidate in result.get("candidates", [])
+            if candidate.get("model_id") == model_id
+        ),
+        model_id or "No aplica",
+    )
+
 
 def safe_text(value) -> str:
     text = "" if value is None else str(value)
@@ -48,9 +86,9 @@ def create_excel(result: dict, path: Path) -> None:
         path, {"constant_memory": True, "strings_to_formulas": False, "strings_to_urls": False}
     )
     header = workbook.add_format(
-        {"bold": True, "bg_color": "#0F766E", "font_color": "white", "border": 1}
+        {"bold": True, "bg_color": PETROLEUM, "font_color": "white", "border": 1}
     )
-    title = workbook.add_format({"bold": True, "font_size": 16, "font_color": "#115E59"})
+    title = workbook.add_format({"bold": True, "font_size": 16, "font_color": PETROLEUM})
     sheets = [
         "00_Resumen",
         "01_Calidad_Data",
@@ -71,15 +109,17 @@ def create_excel(result: dict, path: Path) -> None:
         worksheet.set_column(0, 12, 24)
     summary = workbook.get_worksheet_by_name("00_Resumen")
     summary.write(0, 0, "Laboratorio ML — Resumen", title)
+    summary.write(1, 0, "Desarrollado por Luis Salazar")
     rows = [
         ("Objetivo", result.get("goal")),
         ("Tipo", result.get("problem_type")),
-        ("Modelo seleccionado", result.get("selection_decision", {}).get("model_id")),
-        ("Métrica principal", result.get("primary_metric_id")),
+        ("Modelo seleccionado", selected_model_name(result)),
+        ("Métrica principal", presentation_label(result.get("primary_metric_id"))),
         ("Confiabilidad", result.get("reliability", {}).get("primary_level")),
+        ("Significado", "Solidez de la evaluación; no es una probabilidad de acierto."),
         ("Versión", result.get("engine_version")),
     ]
-    for index, (key, value) in enumerate(rows, 2):
+    for index, (key, value) in enumerate(rows, 3):
         summary.write(index, 0, key, header)
         summary.write(index, 1, safe_text(value))
     quality = result.get("data_quality", {}).get("columns", [])
@@ -122,10 +162,14 @@ def create_excel(result: dict, path: Path) -> None:
                 "termino": "Confiabilidad",
                 "definicion": "Solidez de la evaluación; no es probabilidad de acierto.",
             },
+            {"termino": "MAE", "definicion": "Error absoluto medio, en la unidad del resultado."},
+            {"termino": "RMSE", "definicion": "Raíz del error cuadrático medio; penaliza más los errores grandes."},
             {"termino": "R²", "definicion": "No es porcentaje de acierto y puede ser negativo."},
+            {"termino": "Exactitud balanceada", "definicion": "Promedio del acierto por clase."},
+            {"termino": "Error numérico", "definicion": "Predicho menos real."},
             {
                 "termino": "selection_oof",
-                "definicion": "Predicción fuera del train del fold, también usada para seleccionar.",
+                "definicion": "Predicción de validación con datos no usados para entrenar ese ajuste; también usada para seleccionar.",
             },
         ],
         header,
@@ -188,6 +232,13 @@ def write_table(worksheet, rows, header):
 
 def create_pdf(result: dict, path: Path) -> None:
     styles = getSampleStyleSheet()
+    styles["Title"].fontName = "Helvetica-Bold"
+    styles["Title"].textColor = colors.HexColor(PETROLEUM)
+    styles["Heading2"].fontName = "Helvetica-Bold"
+    styles["Heading2"].textColor = colors.HexColor(PETROLEUM)
+    styles["BodyText"].fontName = "Helvetica"
+    styles["BodyText"].fontSize = 10
+    styles["BodyText"].leading = 15
     document = SimpleDocTemplate(
         str(path),
         pagesize=A4,
@@ -199,6 +250,7 @@ def create_pdf(result: dict, path: Path) -> None:
     )
     story = [
         Paragraph("Laboratorio ML", styles["Title"]),
+        Paragraph("Desarrollado por Luis Salazar", styles["BodyText"]),
         Paragraph("Reporte de análisis local", styles["Heading2"]),
         Spacer(1, 8 * mm),
     ]
@@ -209,9 +261,10 @@ def create_pdf(result: dict, path: Path) -> None:
             f"{result.get('dataset_summary', {}).get('row_count', 0)} filas · {result.get('dataset_summary', {}).get('column_count', 0)} columnas",
         ),
         ("Confiabilidad", result.get("reliability", {}).get("primary_level", "No evaluable")),
-        ("Validación", result.get("validation_plan", {}).get("evidence_mode", "No evaluable")),
-        ("Modelo seleccionado", result.get("selection_decision", {}).get("model_id", "No aplica")),
-        ("Métrica principal", result.get("primary_metric_id", "No aplica")),
+        ("Qué significa", "Describe la solidez de la evaluación; no es una probabilidad de acierto."),
+        ("Validación", presentation_label(result.get("validation_plan", {}).get("evidence_mode"))),
+        ("Modelo seleccionado", selected_model_name(result)),
+        ("Métrica principal", presentation_label(result.get("primary_metric_id"))),
     ]:
         story.extend(
             [
@@ -222,10 +275,10 @@ def create_pdf(result: dict, path: Path) -> None:
         )
     metrics = [["Métrica", "Valor", "Población", "Rol"]] + [
         [
-            metric["name"],
+            presentation_label(metric.get("metric_id")) if metric.get("metric_id") == "r2" else metric["name"],
             "No disponible" if metric["value"] is None else f"{metric['value']:.4g}",
             str(metric["n_used"]),
-            metric.get("evaluation_role", ""),
+            presentation_label(metric.get("evaluation_role", "")),
         ]
         for metric in result.get("evaluation_metrics", [])
     ]
@@ -240,7 +293,7 @@ def create_pdf(result: dict, path: Path) -> None:
             [
                 names.get(driver.get("source_column_id"), driver.get("source_column_id")),
                 f"{driver.get('importance_mean', 0):.4g}",
-                driver.get("evaluation_role", ""),
+                presentation_label(driver.get("evaluation_role", "")),
             ]
             for driver in drivers
         ]
@@ -263,9 +316,9 @@ def styled_table(rows):
     table.setStyle(
         TableStyle(
             [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0F766E")),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(PETROLEUM)),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor(LIGHT_GRAY)),
                 ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                 ("FONTSIZE", (0, 0), (-1, -1), 8),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -286,21 +339,25 @@ def result_chart(result):
             return None
         actual = [row["actual"] for row in points]
         predicted = [row["predicted"] for row in points]
-        axis.scatter(actual, predicted, alpha=0.7, color="#0F766E")
+        axis.scatter(actual, predicted, alpha=0.75, color=TURQUOISE, edgecolor=PETROLEUM)
         low, high = min(actual + predicted), max(actual + predicted)
-        axis.plot([low, high], [low, high], "--", color="#64748B")
-        axis.set(xlabel="Real", ylabel="Predicho", title="Real frente a predicho · fuera de train")
+        margin = (high - low or max(abs(low), 1)) * 0.08
+        axis.plot([low - margin, high + margin], [low - margin, high + margin], "--", color="#64748B")
+        axis.set_xlim(low - margin, high + margin)
+        axis.set_ylim(low - margin, high + margin)
+        axis.grid(alpha=0.2)
+        axis.set(xlabel="Real · unidades del resultado", ylabel="Predicho · unidades del resultado", title="Valores reales y predichos · validación")
     elif problem == "classification":
         matrix = result.get("diagnostics", {}).get("confusion_matrix")
         labels = result.get("diagnostics", {}).get("class_labels", [])
         if not matrix:
             plt.close(figure)
             return None
-        image = axis.imshow(matrix, cmap="BuGn")
+        image = axis.imshow(matrix, cmap="GnBu")
         figure.colorbar(image, ax=axis)
         axis.set_xticks(range(len(labels)), labels, rotation=30, ha="right")
         axis.set_yticks(range(len(labels)), labels)
-        axis.set(xlabel="Predicho", ylabel="Real", title="Matriz de confusión · fuera de train")
+        axis.set(xlabel="Predicho", ylabel="Real", title="Matriz de confusión · validación")
         for row, values in enumerate(matrix):
             for column, value in enumerate(values):
                 axis.text(column, row, str(value), ha="center", va="center")
@@ -310,11 +367,16 @@ def result_chart(result):
         if not history or not future:
             plt.close(figure)
             return None
-        axis.plot([row["target_period"] for row in history], [row["actual"] for row in history], label="Historia", color="#0F766E")
-        axis.plot([row["target_period"] for row in future], [row["predicted"] for row in future], label="Pronóstico futuro", color="#EA580C", marker="o")
+        validation = [row for row in predictions if row.get("evaluation_role") == "selection_validation"]
+        axis.plot([row["target_period"] for row in history], [row["actual"] for row in history], label="Histórico observado", color=TURQUOISE)
+        if validation:
+            axis.plot([row["target_period"] for row in validation], [row["predicted"] for row in validation], label="Validación de selección", color=BLUE, linestyle="--")
+        axis.plot([history[-1]["target_period"]] + [row["target_period"] for row in future], [history[-1]["actual"]] + [row["predicted"] for row in future], label="Pronóstico futuro", color=ORANGE, linestyle="--", marker="o")
+        axis.axvline(history[-1]["target_period"], color=ORANGE, linestyle=":", alpha=0.7)
         axis.tick_params(axis="x", labelrotation=45)
         axis.legend()
-        axis.set(title="Historia y pronóstico mensual futuro", ylabel="Unidad del objetivo")
+        axis.grid(axis="y", alpha=0.2)
+        axis.set(title="Histórico, validación y pronóstico mensual", ylabel="Unidades del resultado")
     else:
         plt.close(figure)
         return None
@@ -338,7 +400,7 @@ def column_names(result):
 def footer(canvas, document):
     canvas.saveState()
     canvas.setFont("Helvetica", 8)
-    canvas.drawString(18 * mm, 10 * mm, "Laboratorio ML · reporte local")
+    canvas.drawString(18 * mm, 10 * mm, "Laboratorio ML · Desarrollado por Luis Salazar")
     canvas.drawRightString(192 * mm, 10 * mm, f"Página {document.page}")
     canvas.restoreState()
 
