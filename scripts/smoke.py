@@ -130,7 +130,8 @@ assert regression["drivers"] and all(
 )
 assert classification["diagnostics"]["confusion_matrix"]
 assert any(row["evaluation_role"] == "forecast_future" for row in forecast["predictions"])
-assert not any(row["evaluation_role"] == "final_test" for row in forecast["predictions"])
+assert any(row["evaluation_role"] == "final_test" for row in forecast["predictions"])
+assert forecast["final_test"] is not None
 
 report = call(
     f"/runs/{regression_run['run_id']}/exports", "POST", {"formats": ["xlsx", "pdf"]}
