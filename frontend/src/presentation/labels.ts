@@ -13,6 +13,11 @@ const labels: Record<string, string> = {
   CLASS_SUPPORT_INSUFFICIENT: 'No hay suficientes casos por clase para evaluar modelos.',
   ALL_CANDIDATES_FAILED: 'Ningún modelo pudo completar una evaluación comparable.',
   INSUFFICIENT_HISTORY: 'No hay suficiente historial mensual para evaluar y pronosticar.',
+  MISSING_MONTHLY_PERIODS: 'La serie tiene meses faltantes y el pronóstico mensual necesita continuidad.',
+  CONTINUOUS_TARGET_FOR_CLASSIFICATION: 'La clasificación necesita categorías, no un número continuo.',
+  REGRESSION_TARGET_NOT_NUMERIC: 'Estimar un valor necesita un resultado numérico.',
+  CONSTANT_TARGET: 'El resultado no cambia y no existe variación que aprender.',
+  NO_USABLE_FEATURES: 'No queda ninguna variable útil para entrenar.',
 }
 
 export function humanLabel(value: string | null | undefined, fallback?: string) {
@@ -26,15 +31,7 @@ export function metricLabel(metricId: string | null | undefined, name?: string) 
 }
 
 export function metricExplanation(metricId: string | null | undefined, unit?: string) {
-  switch (metricId) {
-    case 'mae': return 'Error absoluto medio, en la unidad del resultado.'
-    case 'rmse': return 'Raíz del error cuadrático medio; penaliza más los errores grandes.'
-    case 'r2': return 'R² no es un porcentaje de acierto y puede ser negativo.'
-    case 'balanced_accuracy': return 'Promedio del acierto obtenido en cada clase.'
-    case 'accuracy': return 'Proporción de categorías predichas correctamente.'
-    case 'macro_f1': return 'Promedio del equilibrio entre precisión y cobertura de cada clase.'
-    default: return unit === 'score' ? 'Resultado sin unidad; no es una probabilidad.' : humanLabel(unit)
-  }
+  return metricId && concepts[metricId] ? explain(metricId) : unit === 'score' ? 'Resultado sin unidad; no es una probabilidad.' : humanLabel(unit)
 }
 
 export function systemError(message: string) {
@@ -42,6 +39,22 @@ export function systemError(message: string) {
   return code ? labels[code] : message
 }
 
+export function progressMessage(stage?: string, message?: string) {
+  if (message?.startsWith('Comparando modelos')) return message
+  if (message?.startsWith('Midiendo importancia')) return message
+  const byStage: Record<string, string> = {
+    prepare: 'Preparando las variables para el análisis',
+    fit: 'Comparando modelos con las mismas particiones',
+    compare: 'Comparando evidencia frente a la referencia',
+    evaluate: 'Calculando métricas de validación',
+    explain: 'Midiendo qué variables ayudaron a predecir',
+    freeze_result: 'Guardando un resultado inmutable',
+    finished: 'Análisis completado',
+  }
+  return byStage[stage ?? ''] ?? 'Preparando el análisis…'
+}
+
 export function driverBar(importance: number, maxAbs: number) {
   return { side: importance < 0 ? 'negative' : 'positive', width: Math.abs(importance) / Math.max(maxAbs, 1e-12) * 50 }
 }
+import { concepts, explain } from '../education/concepts'

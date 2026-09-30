@@ -1,4 +1,4 @@
-# Laboratorio ML
+# Laboratorio ML · v0.3.0000
 
 ¿Tienes un Excel y quieres probar machine learning, pero no sabes por dónde empezar?
 
@@ -10,7 +10,7 @@ La identidad visual (símbolo, variantes y tamaños de uso), los tokens y el est
 
 ## Qué puedes hacer
 
-- Explorar CSV, XLSX y Parquet con tipos primitivos.
+- Explorar Excel (.xlsx), CSV y Parquet con tipos primitivos. Excel es el camino principal.
 - Estimar un valor, predecir categorías o pronosticar una serie mensual regular.
 - Comparar referencias simples, modelos lineales y árboles.
 - Revisar calidad, exclusiones, métricas, candidatos fallidos y límites.
@@ -41,7 +41,7 @@ En Windows también puedes ejecutar `powershell -ExecutionPolicy Bypass -File sc
 
 ## Flujo de uso
 
-1. Sube un archivo o elige un ejemplo sintético.
+1. Sube tu Excel o archivo de datos, o elige uno de los cinco ejemplos sintéticos.
 2. Revisa cómo se interpretaron columnas, faltantes, IDs y duplicados.
 3. Elige una pregunta y target; para forecasting, también fecha y horizonte.
 4. Revisa el preflight y ejecuta.
@@ -61,9 +61,23 @@ Excel contiene resumen, calidad, limpieza real, configuración, candidatos, mét
 
 V1 no ofrece inferencia por lotes, clustering, detección de anomalías por modelos, calibración formal, intervalos conformales, SHAP, tuning Optuna completo, envío directo a OpenAI, GPU, deep learning, multiusuario, despliegue público ni causalidad. Forecasting acepta una sola serie mensual regular sin covariables; exige calendario continuo, no rellena huecos y permite sumar o promediar duplicados mensuales. La validación tabular supone registros independientes: grupos, entidades repetidas y usos temporales no están soportados. Consulta [ROADMAP](docs/ROADMAP.md).
 
-## Ejemplos
+## Probar sin usar tus propios datos
 
-`examples/` contiene regresión, clasificación y forecast sintéticos. Nunca usa datasets privados. El script `scripts/generate_examples.py` crea XLSX/Parquet adicionales reproducibles.
+La pantalla de ejemplos ofrece cinco recorridos Excel-first: estimar un valor, predecir una categoría, estimar próximos meses, entender variables útiles y explorar calidad. Cada workbook tiene una hoja `Datos` y una hoja `Guía`; la configuración recomendada se muestra antes de ejecutar y puede modificarse.
+
+`examples/` contiene únicamente datos sintéticos reproducibles con semilla fija. CSV y Parquet se conservan para pruebas de formato y CI. Regenera los archivos con `cd backend && uv run python ../scripts/generate_examples.py`.
+
+## Excel y formatos soportados
+
+La estructura recomendada es una tabla con una fila por observación, una columna por variable y encabezados claros. Puedes elegir hoja y fila real de encabezados. La app no interpreta diseño visual, no ejecuta macros ni corrige automáticamente todos los errores de la data. `.xls` antiguo no está soportado; guárdalo como `.xlsx` desde Excel antes de subirlo.
+
+## Datasets públicos para seguir practicando
+
+La sección [Guía](http://localhost:3000/guide#datasets) enlaza UCI, OpenML, la Plataforma Nacional de Datos Abiertos del Perú y Our World in Data. Son referencias externas: la app no descarga ni envía datos automáticamente y ningún dataset está garantizado para funcionar sin preparación.
+
+## Versión
+
+`version.json` es la fuente de verdad de la release visible `MAJOR.MINOR.BUILD`; BUILD usa cuatro dígitos. Su `semver` se sincroniza con los paquetes backend y frontend. MAJOR requiere una generación incompatible aprobada, MINOR agrega una feature compatible y BUILD corrige de forma compatible. Los cambios solo documentales no publican versión. Verifica mirrors con `python3 scripts/check_version.py`.
 
 ## FAQ
 

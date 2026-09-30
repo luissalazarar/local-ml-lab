@@ -13,7 +13,7 @@ from rq import Worker
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from local_ml_lab import __version__
+from local_ml_lab import __version__, display_version
 from local_ml_lab.db.migrate import migrate
 from local_ml_lab.db.models import Artifact, Dataset, DatasetVersion, Event, Job, Preflight, Run
 from local_ml_lab.db.session import get_db
@@ -23,6 +23,7 @@ from local_ml_lab.domain.contracts import (
     PreflightRequest,
     RunRequest,
 )
+from local_ml_lab.examples import BY_ID, public_examples
 from local_ml_lab.jobs import canonical_hash, enqueue
 from local_ml_lab.settings import settings
 
@@ -133,6 +134,7 @@ def system(request: Request):
     return {
         "name": settings.app_display_name,
         "version": __version__,
+        "display_version": display_version(),
         "api": "ready",
         "queue": "ready" if queue_ok else "unavailable",
         "worker": "ready" if worker_ok else "unavailable",
@@ -178,38 +180,15 @@ def delete_session(request: Request, response: Response):
 
 @app.get("/api/v1/examples")
 def examples():
-    return {
-        "items": [
-            {
-                "id": "regression",
-                "name": "Regresión: consumo sintético",
-                "filename": "regression.csv",
-            },
-            {
-                "id": "classification",
-                "name": "Clasificación: respuesta sintética",
-                "filename": "classification.csv",
-            },
-            {
-                "id": "forecast_monthly",
-                "name": "Pronóstico mensual sintético",
-                "filename": "forecast_monthly.csv",
-            },
-        ]
-    }
+    return {"items": public_examples()}
 
 
 def example_path(example_id: str):
-    names = {
-        "regression": "regression.csv",
-        "classification": "classification.csv",
-        "forecast_monthly": "forecast_monthly.csv",
-        "dirty_data": "dirty_data.xlsx",
-        "tabular": "tabular.parquet",
-    }
-    if example_id not in names:
+    legacy = {"dirty_data": "dirty_data.xlsx", "tabular": "tabular.parquet", "excel_reader_cases": "excel_reader_cases.xlsx"}
+    filename = BY_ID.get(example_id, {}).get("filename") or legacy.get(example_id)
+    if not filename:
         raise HTTPException(404, "Ejemplo no encontrado")
-    return Path("/app/examples") / names[example_id]
+    return Path("/app/examples") / filename
 
 
 @app.get("/api/v1/examples/{example_id}/download")
@@ -246,6 +225,8 @@ def from_example(example_id: str, db: Session = Depends(get_db)):
 @app.post("/api/v1/datasets", status_code=202)
 async def upload_dataset(file: UploadFile = File(...), db: Session = Depends(get_db)):
     ext = Path(file.filename or "").suffix.lower()
+    if ext == ".xls":
+        raise HTTPException(415, ".xls antiguo no está soportado; guárdalo como .xlsx desde Excel")
     if ext not in {".csv", ".xlsx", ".parquet"}:
         raise HTTPException(415, "Formato no soportado")
     dataset = create_dataset_record(db, Path(file.filename or "archivo").name, 0, "pending", ext)
@@ -379,7 +360,9 @@ def get_preflight(preflight_id: str, db: Session = Depends(get_db)):
     obj = db.get(Preflight, preflight_id)
     if not obj:
         raise HTTPException(404)
-    return serialize(obj)
+    data = serialize(obj)
+    data.update(obj.resolved_config.get("_preflight", {}))
+    return data
 
 
 @app.post("/api/v1/runs", status_code=202)
