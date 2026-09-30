@@ -1,4 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom'
+import { BrandSymbol } from '../../brand/BrandSymbol'
 
 const capabilities = [
   ['Estimar un valor', 'Duración, cantidad, consumo o costo.'],
@@ -28,7 +29,7 @@ export function Home() {
           </div>
         </div>
         <aside className="trustCard">
-          <div className="pulse" />
+          <BrandSymbol className="trustSymbol" tone="inverse" size={48} />
           <strong>Tus datos se procesan en este equipo</strong>
           <p>
             No necesitas una API key. Puedes revisar y copiar un contexto seguro para usarlo
@@ -46,9 +47,9 @@ export function Home() {
           <h2 id="cap">Empieza por tu pregunta, no por un algoritmo.</h2>
         </div>
         <div className="cardGrid">
-          {capabilities.map(([title, description], index) => (
+          {capabilities.map(([title, description]) => (
             <article className="capCard" key={title}>
-              <span>0{index + 1}</span><h3>{title}</h3><p>{description}</p>
+              <h3>{title}</h3><p>{description}</p>
             </article>
           ))}
         </div>

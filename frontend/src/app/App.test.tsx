@@ -1,11 +1,11 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Home } from '../features/home/Home'
 import { App } from './App'
 import { driverBar, humanLabel, metricExplanation, metricLabel } from '../presentation/labels'
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 describe('contrato básico', () => {
   it('presenta la acción principal sin jerga técnica', () => {
@@ -29,6 +29,15 @@ describe('contrato básico', () => {
     expect(brand.textContent).toBe('Laboratorio ML')
     expect(brand.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
     expect(author.contains(brand)).toBe(false)
+  })
+
+  it('marca la sección activa en la navegación principal', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ csrf_token: 'test' }) }))
+    render(<MemoryRouter initialEntries={['/new']}><App /></MemoryRouter>)
+    const nav = await screen.findByRole('navigation', { name: 'Principal' })
+    const current = nav.querySelector('[aria-current="page"]')
+    expect(current?.textContent).toBe('Nuevo análisis')
+    expect(nav.querySelectorAll('[aria-current="page"]')).toHaveLength(1)
   })
 
   it('traduce roles y explica métricas sin cambiar identificadores', () => {
