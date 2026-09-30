@@ -26,7 +26,9 @@ def test_real_regression_pipeline_and_baseline():
     )
     assert result["analytical_outcome"] == "completed"
     assert any(c["model_id"] == "dummy_median" for c in result["candidates"])
-    assert all(c["status"] in {"succeeded", "failed"} for c in result["candidates"])
+    assert all(c["status"] in {"completed", "failed"} for c in result["candidates"])
+    assert result["selection_decision"]["policy_version"] == "selection-policy-2.0"
+    assert result["plan_sha256"] == result["analysis_plan"]["plan_sha256"]
 
 
 def test_prepared_analysis_preserves_original_prepared_and_target_counts():
@@ -168,7 +170,7 @@ def test_monthly_forecast_calendar_horizon_and_missing_periods():
         analyze(missing_frame, profile_frame(missing_frame, missing_mapping), config)
 
 
-def test_seasonal_forecast_repeats_last_year_for_long_horizon():
+def test_long_horizon_uses_shortest_prefix_for_seasonal_eligibility():
     raw = pd.DataFrame(
         {
             "fecha": pd.date_range("2020-01-01", periods=60, freq="MS").astype(str),
@@ -193,5 +195,7 @@ def test_seasonal_forecast_repeats_last_year_for_long_horizon():
         },
     )
     future = [row for row in result["predictions"] if row["evaluation_role"] == "forecast_future"]
-    assert result["selection_decision"]["model_id"] == "seasonal_naive"
-    assert future[0]["predicted"] == future[12]["predicted"]
+    seasonal = next(item for item in result["candidates"] if item["model_id"] == "seasonal_naive")
+    assert seasonal["status"] == "ineligible"
+    assert "FIRST_PREFIX_HAS_21" in seasonal["reason_code"]
+    assert len(future) == 13

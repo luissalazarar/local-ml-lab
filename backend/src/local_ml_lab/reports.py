@@ -110,6 +110,8 @@ def create_excel(result: dict, path: Path) -> None:
         "09_Advertencias",
         "10_Validacion",
         "11_Diccionario",
+        "12_Seleccion_Modelo",
+        "13_Limites",
     ]
     for name in sheets:
         worksheet = workbook.add_worksheet(name)
@@ -164,6 +166,16 @@ def create_excel(result: dict, path: Path) -> None:
     write_table(
         workbook.get_worksheet_by_name("11_Diccionario"),
         dictionary_rows(result),
+        header,
+    )
+    write_table(
+        workbook.get_worksheet_by_name("12_Seleccion_Modelo"),
+        [result.get("selection_decision", {})],
+        header,
+    )
+    write_table(
+        workbook.get_worksheet_by_name("13_Limites"),
+        [{"limite": value} for value in result.get("limitations", [])],
         header,
     )
     workbook.close()
@@ -346,6 +358,32 @@ def create_pdf(result: dict, path: Path) -> None:
             ]
         )
     story += [
+        Paragraph("Cómo se eligió el modelo", styles["Heading2"]),
+        Paragraph(
+            paragraph_text(
+                result.get("selection_decision", {}).get(
+                    "reason",
+                    "No hubo una selección predictiva aplicable.",
+                )
+            ),
+            styles["BodyText"],
+        ),
+        Spacer(1, 4 * mm),
+        Paragraph("Cómo se evaluó", styles["Heading2"]),
+        Paragraph(
+            paragraph_text(
+                f"{presentation_label(result.get('validation_plan', {}).get('strategy'))}. "
+                "Las transformaciones se ajustaron dentro de cada entrenamiento y los candidatos comparables usaron las mismas observaciones."
+            ),
+            styles["BodyText"],
+        ),
+        Spacer(1, 4 * mm),
+        Paragraph("Qué significan los límites", styles["Heading2"]),
+        Paragraph(
+            "Acotan qué puede concluirse. Los umbrales de selección son decisiones del producto y no pruebas de significancia estadística.",
+            styles["BodyText"],
+        ),
+        Spacer(1, 6 * mm),
         Paragraph("Cómo leer este resultado", styles["Heading2"]),
         Paragraph(paragraph_text(report_reading_help(result)), styles["BodyText"]),
         Spacer(1, 4 * mm),
@@ -474,9 +512,19 @@ def result_chart(result):
         if not history or not future:
             plt.close(figure)
             return None
-        validation = [
-            row for row in predictions if row.get("evaluation_role") == "selection_validation"
+        final_test = [
+            row for row in predictions if row.get("evaluation_role") == "final_test"
         ]
+        selection = [
+            row for row in predictions if row.get("evaluation_role") == "selection_backtest"
+        ]
+        if final_test:
+            validation = final_test
+            validation_label = "Prueba reservada"
+        else:
+            last_unit = selection[-1].get("unit_id") if selection else None
+            validation = [row for row in selection if row.get("unit_id") == last_unit]
+            validation_label = "Última prueba de selección"
         axis.plot(
             [row["target_period"] for row in history],
             [row["actual"] for row in history],
@@ -487,7 +535,7 @@ def result_chart(result):
             axis.plot(
                 [row["target_period"] for row in validation],
                 [row["predicted"] for row in validation],
-                label="Validación de selección",
+                label=validation_label,
                 color=BLUE,
                 linestyle="--",
             )
@@ -504,7 +552,7 @@ def result_chart(result):
         axis.legend()
         axis.grid(axis="y", alpha=0.2)
         axis.set(
-            title="Histórico, validación y pronóstico mensual", ylabel="Unidades del resultado"
+            title="Histórico, bloque fuera de muestra y pronóstico mensual", ylabel="Unidades del resultado"
         )
     else:
         plt.close(figure)

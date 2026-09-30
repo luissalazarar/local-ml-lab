@@ -11,7 +11,10 @@ def result_fixture():
         "primary_metric_id": "mae",
         "engine_version": "test",
         "dataset_summary": {"row_count": 2, "column_count": 2},
-        "selection_decision": {"model_id": "ridge"},
+        "selection_decision": {
+            "model_id": "ridge",
+            "reason": "Superó la mejora práctica y la consistencia.",
+        },
         "reliability": {"primary_level": "low"},
         "validation_plan": {"evidence_mode": "selection_cv"},
         "evaluation_metrics": [
@@ -76,6 +79,8 @@ def test_excel_and_pdf_open_with_real_content(tmp_path):
         str(cell.value) for row in workbook["08_Errores"].iter_rows() for cell in row
     }
     assert len(list(workbook["06_Predicciones"].iter_rows(values_only=True))) == 3
+    assert workbook["12_Seleccion_Modelo"]["A1"].value is not None
+    assert workbook["13_Limites"]["A1"].value is not None
     summary_values = {str(cell.value) for row in workbook["00_Resumen"].iter_rows() for cell in row}
     assert "Desarrollado por Luis Salazar" in summary_values
     assert "Regresión Ridge" in summary_values
@@ -86,4 +91,7 @@ def test_excel_and_pdf_open_with_real_content(tmp_path):
     assert "Desarrollado por Luis Salazar" in text
     assert "Regresión Ridge" in text
     assert "Preparación de datos" in text
+    assert "Cómo se eligió el modelo" in text
+    assert "Cómo se evaluó" in text
+    assert "Qué significan los límites" in text
     assert len(pdf_path.read_bytes()) > 2_000

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.0 — 2026-09-30
+
+- Añadido `AnalysisPlan` inmutable con membresía reproducible, seeds SHA-256, parámetros, presupuestos y hash del plan.
+- Sustituida la predicción cruzada opaca por evaluación explícita por candidato/unidad, duplicados en bloque, holdout reservado cuando existe soporte y métricas conjuntas desde predicciones OOS.
+- Incorporada `selection-policy-2.0`: mejora práctica, consistencia, banda de simplicidad, referencia elegible y exclusión de candidatos incompletos.
+- Ampliado el catálogo tabular con variantes balanceadas y el temporal con siete métodos, incluidos Holt y Holt-Winters aditivos mediante statsmodels.
+- Añadidos eventos estructurados, proyección `/runs/{id}/live`, polling recuperable con ETag/backoff y pantalla “Así estamos evaluando tu data”.
+- Extendidos resultados, reportes, Guía y pruebas para distinguir selección, prueba reservada, futuro, estado técnico y límites.
+
 ## 0.5.0 — 2026-09-30
 
 - Reemplazada la tabla horizontal de preparación por una experiencia master-detail, buscable y responsive que presenta una columna a la vez.

@@ -1,4 +1,4 @@
-# Laboratorio ML · v0.5.0000
+# Laboratorio ML · v0.6.0000
 
 ¿Tienes un Excel y quieres probar machine learning, pero no sabes por dónde empezar?
 
@@ -13,7 +13,8 @@ La identidad visual (símbolo, variantes y tamaños de uso), los tokens y el est
 - Explorar Excel (.xlsx), CSV y Parquet con tipos primitivos. Excel es el camino principal.
 - Crear versiones preparadas auditables con un editor guiado por columna, preview antes/después, filas apartadas y receta reutilizable.
 - Estimar un valor, predecir categorías o pronosticar una serie mensual regular.
-- Comparar referencias simples, modelos lineales y árboles.
+- Comparar referencias simples, modelos lineales y árboles con splits congelados y una política conservadora.
+- Observar candidatos, métricas y gráficos reales por evaluación mientras el run continúa.
 - Revisar calidad, exclusiones, métricas, candidatos fallidos y límites.
 - Exportar Excel, PDF y contexto TXT/Markdown/JSON para cualquier IA.
 - Reabrir el historial persistente después de reiniciar.
@@ -47,11 +48,11 @@ En Windows también puedes ejecutar `powershell -ExecutionPolicy Bypass -File sc
 3. En **Preparar**, revisa una columna a la vez, confirma qué contiene, para qué sirve y cómo interpretarla; el original no cambia.
 4. Elige el resultado que quieres predecir; para pronóstico, también fecha, horizonte y, solo si corresponde, agregación mensual.
 5. Revisa el preflight y ejecuta.
-6. Compara confiabilidad, referencia, métricas, drivers y exportaciones.
+6. Observa evaluaciones reales en vivo y después compara selección, prueba reservada, referencia, métricas, drivers y exportaciones.
 
 El flujo es **Original → Preparado → Análisis → Entrenamiento**. Preparar no significa que Laboratorio ML pueda saber si tus datos son correctos para tu negocio. Las transformaciones que aprenden de los datos continúan ocurriendo únicamente dentro del entrenamiento para evitar fugas.
 
-La confiabilidad resume la solidez de la evaluación; no es una probabilidad de acierto. Una referencia sencilla puede ganar. La importancia se calcula fuera del train de cada fold, pero esa validación también participa en la selección y no demuestra causalidad.
+La confiabilidad resume la solidez de la evaluación; no es una probabilidad de acierto. Una referencia sencilla puede ganar cuando la mejora no alcanza magnitud y consistencia suficientes. La importancia se calcula fuera del train de cada fold, no decide retrospectivamente el ganador y no demuestra causalidad.
 
 ## Privacidad y OpenAI opcional
 
@@ -91,7 +92,7 @@ La sección [Guía](http://localhost:3000/guide#datasets) enlaza UCI, OpenML, la
 
 **¿Mis datos salen del equipo?** No. La aplicación genera una proyección revisable para que decidas si la copias a otra herramienta.
 
-**¿Por qué ganó una referencia sencilla?** Porque los modelos probados no mejoraron claramente esa comparación bajo la evaluación usada.
+**¿Por qué ganó una referencia sencilla?** Porque ningún candidato completo superó la mejora práctica mínima y el gate de consistencia. Esto no demuestra que no exista señal.
 
 **¿Por qué no hay R² o ROC?** Algunas métricas no son válidas con un resultado constante, una sola clase o soporte insuficiente; se muestran como no disponibles con motivo.
 

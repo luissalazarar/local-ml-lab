@@ -21,7 +21,8 @@ class AnalysisConfig(StrictModel):
     problem_type: Literal["regression", "classification", "forecasting", "exploration"]
     target_column_id: str | None = None
     date_column_id: str | None = None
-    included_column_ids: list[str] = Field(default_factory=list)
+    # None means "use the eligible defaults"; [] is an explicit featureless selection.
+    included_column_ids: list[str] | None = None
     excluded_column_ids: list[str] = Field(default_factory=list)
     depth: Literal["quick", "recommended"] = "quick"
     primary_metric: str | None = None

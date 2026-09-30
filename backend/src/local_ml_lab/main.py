@@ -6,7 +6,7 @@ import shutil
 from datetime import UTC
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, HTTPException, Request, Response, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from redis import Redis
 from rq import Worker
@@ -719,6 +719,84 @@ def get_result(run_id: str, response: Response, db: Session = Depends(get_db)):
     return json.loads((settings.data_root / run.result_ref).read_text(encoding="utf-8"))
 
 
+@app.get("/api/v1/runs/{run_id}/live")
+def get_live_run(
+    run_id: str,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    run = db.get(Run, run_id)
+    if not run or not run.latest_job_id:
+        raise HTTPException(404)
+    job = db.get(Job, run.latest_job_id)
+    if not job:
+        raise HTTPException(404)
+    recent = list(
+        reversed(
+            db.scalars(
+                select(Event)
+                .where(Event.job_id == job.id)
+                .order_by(Event.seq.desc())
+                .limit(50)
+            ).all()
+        )
+    )
+    revision = recent[-1].seq if recent else 0
+    heartbeat_revision = int(job.heartbeat_at.timestamp()) if job.heartbeat_at else 0
+    etag = f'"live-{job.id}-{revision}-{heartbeat_revision}-{job.status}"'
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={"ETag": etag})
+    response.headers["ETag"] = etag
+    live_state = job.progress.get("live_state", {})
+    candidates = list(live_state.get("candidates", {}).values())
+    plan_summary = live_state.get("plan_summary") or {}
+    return {
+        "event_version": "1.0",
+        "run_id": run.id,
+        "job_id": job.id,
+        "attempt_id": job.id,
+        "status": job.status,
+        "started_at": (job.started_at or job.created_at).isoformat(),
+        "heartbeat_at": job.heartbeat_at.isoformat() if job.heartbeat_at else None,
+        "revision": revision,
+        "plan_summary": plan_summary,
+        "counters": {
+            "completed_candidates": sum(
+                candidate.get("status") == "completed" for candidate in candidates
+            ),
+            "eligible_candidates": plan_summary.get("eligible_candidate_count", 0),
+            "completed_evaluations": job.progress.get("completed_units", 0),
+            "planned_evaluations": job.progress.get("total_units"),
+        },
+        "candidates": candidates,
+        "ranking": live_state.get("ranking", []),
+        "active_candidate_id": live_state.get("active_candidate_id"),
+        "active_unit_id": live_state.get("active_unit_id"),
+        "active_preview": live_state.get("active_preview"),
+        "selection_decision": live_state.get("selection_decision"),
+        "final_test": live_state.get("final_test"),
+        "last_events": [
+            {
+                "event_version": event.payload.get("event_version", "1.0"),
+                "run_id": event.run_id,
+                "job_id": event.job_id,
+                "attempt_id": event.payload.get("attempt_id", event.job_id),
+                "seq": event.seq,
+                "timestamp": event.created_at.isoformat(),
+                "event_type": event.event_type,
+                "stage": event.stage,
+                "candidate_id": event.payload.get("candidate_id"),
+                "unit_id": event.payload.get("unit_id"),
+                "evaluation_role": event.payload.get("evaluation_role"),
+                "message_code": event.message_code,
+            }
+            for event in recent
+        ],
+        "result_available": run.result_available,
+    }
+
+
 @app.get("/api/v1/jobs/{job_id}")
 def get_job(job_id: str, db: Session = Depends(get_db)):
     obj = db.get(Job, job_id)
@@ -728,12 +806,20 @@ def get_job(job_id: str, db: Session = Depends(get_db)):
 
 
 @app.get("/api/v1/jobs/{job_id}/events")
-def job_events(job_id: str, after: int = 0, db: Session = Depends(get_db)):
+def job_events(
+    job_id: str,
+    after: int = 0,
+    limit: int = Query(default=100, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
     return {
         "items": [
             serialize(x)
             for x in db.scalars(
-                select(Event).where(Event.job_id == job_id, Event.seq > after).order_by(Event.seq)
+                select(Event)
+                .where(Event.job_id == job_id, Event.seq > after)
+                .order_by(Event.seq)
+                .limit(limit)
             ).all()
         ]
     }
@@ -881,6 +967,8 @@ def project_context(result, level, detail):
             "selection_decision",
             "evaluation_metrics",
             "baseline_comparison",
+            "final_test",
+            "explanation_scope",
             "reliability",
             "drivers",
             "limitations",
@@ -888,9 +976,31 @@ def project_context(result, level, detail):
             "engine_version",
         ]
     }
+    plan = result.get("analysis_plan", {})
+    safe["analysis_plan"] = {
+        "plan_version": plan.get("plan_version"),
+        "plan_sha256": plan.get("plan_sha256"),
+        "primary_metric": plan.get("primary_metric"),
+        "metric_direction": plan.get("metric_direction"),
+        "budgets": plan.get("budgets"),
+        "population_count": plan.get("eligible_population", {}).get(
+            "row_count", plan.get("eligible_population", {}).get("month_count")
+        ),
+        "validation_strategy": plan.get("validation", {}).get("strategy"),
+        "evaluation_unit_count": len(plan.get("validation", {}).get("units", [])),
+    }
     if detail == "summary":
         safe["candidates"] = [
-            {"model_id": c.get("model_id"), "status": c.get("status")}
+            {
+                "model_id": c.get("model_id"),
+                "display_name": c.get("display_name"),
+                "status": c.get("status"),
+                "primary_metric_id": c.get("primary_metric_id"),
+                "primary_value": c.get("primary_value"),
+                "completed_units": c.get("completed_unit_count"),
+                "planned_units": c.get("planned_unit_count"),
+                "reason_code": c.get("reason_code"),
+            }
             for c in safe.get("candidates", [])
         ]
     if level >= 2:
