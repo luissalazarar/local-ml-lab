@@ -29,6 +29,31 @@ def test_real_regression_pipeline_and_baseline():
     assert all(c["status"] in {"succeeded", "failed"} for c in result["candidates"])
 
 
+def test_prepared_analysis_preserves_original_prepared_and_target_counts():
+    raw = pd.DataFrame({"x": list(range(12)), "y": [float(i) for i in range(10)] + [None, None]})
+    frame, mapping = normalize_columns(raw)
+    result = analyze(
+        frame,
+        profile_frame(frame, mapping),
+        {
+            "goal": "estimate_value",
+            "problem_type": "regression",
+            "target_column_id": "c0002",
+            "included_column_ids": ["c0001"],
+            "excluded_column_ids": [],
+            "depth": "quick",
+            "seed": 42,
+            "_preparation": {"rows_input": 14, "rows_analyzed": 12, "rows_quarantined": 2},
+        },
+    )
+    counts = result["data_preparation"]
+    assert counts["rows_input"] == 14
+    assert counts["rows_analyzed"] == 12
+    assert counts["rows_quarantined"] == 2
+    assert counts["target_missing_rows"] == 2
+    assert counts["rows_analyzed"] - counts["target_missing_rows"] == 10
+
+
 def test_singleton_class_is_not_evaluable():
     raw = pd.DataFrame({"x": range(6), "y": ["a", "a", "a", "a", "a", "b"]})
     frame, mapping = normalize_columns(raw)

@@ -184,8 +184,14 @@ def dictionary_rows(result):
         "Importancia predictiva": "Cambio de la métrica al alterar una variable fuera del entrenamiento; no demuestra causalidad.",
         "Validación": "Datos apartados de cada ajuste; aquí también participan en la selección.",
         "Pronóstico futuro": "Meses todavía sin valor real disponible; V1 no incluye intervalos.",
+        "Original": "El archivo tal como se subió; la preparación no lo modifica.",
+        "Preparado": "Tipos y representaciones confirmadas antes de elegir el objetivo.",
+        "Análisis": "Decisiones que dependen del resultado elegido, como filas disponibles y agregación mensual.",
+        "Entrenamiento": "Transformaciones y patrones aprendidos usando solo la parte de entrenamiento.",
     }
     terms = {"Confiabilidad", "Validación"}
+    if result.get("data_preparation"):
+        terms.update({"Original", "Preparado", "Análisis", "Entrenamiento"})
     metric_terms = {
         "mae": "MAE",
         "rmse": "RMSE",
@@ -222,7 +228,7 @@ def preparation_rows(result):
                 "valores_afectados": item.get("affected_count"),
                 "filas_iniciales": preparation.get("rows_input"),
                 "filas_analizadas": preparation.get("rows_analyzed"),
-                "filas_segregadas": preparation.get("rows_quarantined"),
+                "filas_apartadas": preparation.get("rows_quarantined"),
             }
         )
     if preparation.get("target_missing_rows"):
@@ -396,7 +402,9 @@ def preparation_summary_text(preparation):
         f"{len(preparation.get('transformations', []))} transformaciones; "
         f"{preparation.get('rows_input', 0)} filas iniciales; "
         f"{preparation.get('rows_analyzed', 0)} filas analizadas; "
-        f"{preparation.get('rows_quarantined', 0)} filas segregadas."
+        f"{preparation.get('rows_quarantined', 0)} filas apartadas. "
+        "Original: archivo sin cambios. Preparado: representaciones confirmadas. "
+        "Análisis: decisiones ligadas al objetivo. Entrenamiento: aprendizaje limitado a sus datos de entrenamiento."
     )
 
 

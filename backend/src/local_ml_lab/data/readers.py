@@ -236,9 +236,9 @@ def _possible_id(series: pd.Series, semantic: str, display_name: str = "") -> bo
         re.search(r"(^id$|_id$|^id_|uuid|codigo|code$|numero$|operacion)", normalized_name)
     )
     if semantic == "numeric":
-        return id_name and unique_ratio >= 0.98
+        return bool(id_name and unique_ratio >= 0.98)
     average_length = series.astype(str).str.len().mean() if len(series) else 0
-    return unique_ratio >= 0.98 and (id_name or average_length >= 8)
+    return bool(unique_ratio >= 0.98 and (id_name or average_length >= 8))
 
 
 def _safe_example(value):

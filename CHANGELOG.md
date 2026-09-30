@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0 — 2026-09-30
+
+- Reemplazada la tabla horizontal de preparación por una experiencia master-detail, buscable y responsive que presenta una columna a la vez.
+- Añadida divulgación progresiva y ayuda accesible para tipos, usos, fechas, números, recetas, métricas, exclusiones y límites.
+- Incorporados controles visuales para los filtros seguros y la unificación explícita de categorías ya soportados por el backend.
+- Reforzado el flujo Original → Preparado → Análisis → Entrenamiento en preparación, objetivo, revisión, resultados, Guía y reportes.
+- Humanizados preview, diccionario del Excel preparado, disponibilidad del resultado, preflight, progreso, drivers y conteos de filas.
+
 ## 0.4.0 — 2026-09-30
 
 - Añadido el paso explícito Preparar con tipo, uso y transformación separados, recomendaciones conservadoras y preview antes/después.

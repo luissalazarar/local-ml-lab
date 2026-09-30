@@ -215,7 +215,7 @@ def test_prepared_excel_has_required_sheets_and_formula_protection(tmp_path):
     workbook = load_workbook(path, data_only=False)
     assert workbook.sheetnames == [
         "01_Datos_Preparados",
-        "02_Filas_Segregadas",
+        "02_Filas_Apartadas",
         "03_Transformaciones",
         "04_Calidad",
         "05_Diccionario",

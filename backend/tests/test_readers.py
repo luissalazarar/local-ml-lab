@@ -32,6 +32,15 @@ def test_operation_identifier_with_accent_is_detected():
     assert profile_frame(frame, mapping)["columns"][0]["possible_id"] is True
 
 
+def test_high_cardinality_text_profile_is_json_serializable():
+    frame, mapping = normalize_columns(
+        pd.DataFrame({"categoria extensa": [f"Categoría número {index}" for index in range(130)]})
+    )
+    profile = profile_frame(frame, mapping)
+    assert profile["columns"][0]["possible_id"] is True
+    assert type(profile["columns"][0]["possible_id"]) is bool
+
+
 def test_reads_real_csv_xlsx_and_parquet(tmp_path):
     expected = pd.DataFrame({"valor": [1, 2], "grupo": ["a", "b"]})
     csv_path = tmp_path / "data.csv"
