@@ -2,6 +2,7 @@
 
 ## Sin publicar
 
+- Renovada la interfaz sin cambios operativos: bloque de marca con autoría en línea, navegación segmentada con sección activa, radios y sombras unificados, tarjetas de capacidades en mosaico, pestañas y pasos en píldora, tablas y estados más legibles, y movimiento que respeta `prefers-reduced-motion`.
 - Reemplazado el distintivo `LM` por un símbolo propio (hoja de datos con una celda apartada donde se comprueba el patrón) en el encabezado y el favicon, con variantes monocromática, inversa y reducida, PNG transparente y componente `BrandSymbol`.
 
 ## 0.2.0 — 2026-09-30

@@ -67,7 +67,22 @@ Los tonos siguientes no se presentan como colores originales del manual. Son dec
 - Fondo de página `#F6F9F9` y división `#D5DEE0`.
 - Estados: éxito `#176B4B`, advertencia `#8A390E`, error `#A1261C` e información `#075E99`, cada uno acompañado por texto o etiqueta.
 
+Forma y profundidad (`frontend/src/styles/tokens.css`):
+
+- Radios: 10 px en controles (`--radius-sm`), 16 px en paneles (`--r`) y píldora completa en etiquetas, pestañas, navegación y pasos (`--radius-pill`).
+- Sombras teñidas de azul petróleo (`--shadow-sm`, `--shadow`, `--shadow-lg`); nunca sombras negras.
+- Superficie secundaria `#F1F6F6` y división suave `#E4EBEC` para agrupar sin recuadrar todo.
+- Curva de movimiento `--ease`. Las transiciones solo comunican estado (hover, selección, cambio de página) y se anulan con `prefers-reduced-motion`.
+
 El botón principal usa azul petróleo con texto blanco. Turquesa y naranja se reservan para acentos, datos y avisos; no se usa texto blanco pequeño sobre esos colores.
+
+## Interfaz
+
+- Encabezado translúcido y fijo en escritorio. Dentro, el bloque de marca es: símbolo, «Laboratorio ML» con «ML» en turquesa oscuro, un divisor fino y la autoría como enlace externo (↗). En móvil la autoría pasa debajo del nombre y el encabezado deja de ser fijo por debajo de 430 px.
+- La navegación principal es un control segmentado que marca la sección activa con `aria-current="page"`.
+- Los paneles protagonistas (confianza local en inicio, métrica principal, privacidad) usan azul petróleo con texto claro. Los demás usan superficie blanca.
+- Las etiquetas de estado usan color semántico, siempre acompañado de texto: completado, fallido, en curso y cancelado.
+- La interfaz es solo de tema claro. Los gráficos y la matriz de confusión no tienen todavía una versión oscura validada.
 
 ## Tipografía
 
