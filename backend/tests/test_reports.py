@@ -15,7 +15,13 @@ def result_fixture():
         "reliability": {"primary_level": "low"},
         "validation_plan": {"evidence_mode": "selection_cv"},
         "evaluation_metrics": [
-            {"metric_id": "mae", "name": "MAE", "value": 1.5, "n_used": 2, "evaluation_role": "selection_oof"}
+            {
+                "metric_id": "mae",
+                "name": "MAE",
+                "value": 1.5,
+                "n_used": 2,
+                "evaluation_role": "selection_oof",
+            }
         ],
         "data_quality": {
             "columns": [
@@ -28,7 +34,22 @@ def result_fixture():
             ]
         },
         "resolved_config": {"primary_metric": "mae"},
-        "candidates": [{"model_id": "ridge", "display_name": "Regresión Ridge", "status": "succeeded"}],
+        "data_preparation": {
+            "dataset_version_id": "prepared-test",
+            "rows_input": 3,
+            "rows_analyzed": 2,
+            "rows_quarantined": 1,
+            "transformations": [
+                {
+                    "column_id": "c0001",
+                    "transformation": "interpretar como número",
+                    "affected_count": 2,
+                }
+            ],
+        },
+        "candidates": [
+            {"model_id": "ridge", "display_name": "Regresión Ridge", "status": "succeeded"}
+        ],
         "predictions": [
             {"actual": 10.0, "predicted": 11.0, "error": 1.0},
             {"actual": 20.0, "predicted": 18.0, "error": -2.0},
@@ -50,7 +71,7 @@ def test_excel_and_pdf_open_with_real_content(tmp_path):
     create_excel(result_fixture(), excel_path)
     create_pdf(result_fixture(), pdf_path)
     workbook = load_workbook(excel_path, read_only=True, data_only=True)
-    assert workbook["02_Limpieza"]["A1"].value is not None
+    assert workbook["02_Preparacion"]["A1"].value is not None
     assert "Sin errores" in {
         str(cell.value) for row in workbook["08_Errores"].iter_rows() for cell in row
     }
@@ -64,4 +85,5 @@ def test_excel_and_pdf_open_with_real_content(tmp_path):
     assert "Variables predictivas" in text
     assert "Desarrollado por Luis Salazar" in text
     assert "Regresión Ridge" in text
+    assert "Preparación de datos" in text
     assert len(pdf_path.read_bytes()) > 2_000

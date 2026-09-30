@@ -1,5 +1,6 @@
 import csv
 import re
+import unicodedata
 from pathlib import Path
 
 import pandas as pd
@@ -36,9 +37,7 @@ def inspect_file(path: Path) -> dict:
             workbook.close()
     elif suffix == ".parquet":
         metadata = pq.ParquetFile(path).metadata
-        result.update(
-            {"row_count": metadata.num_rows, "column_count": metadata.num_columns}
-        )
+        result.update({"row_count": metadata.num_rows, "column_count": metadata.num_columns})
     else:
         encoding = _detect_encoding(path)
         sample = path.read_bytes()[:65536].decode(encoding)
@@ -126,7 +125,14 @@ def normalize_columns(frame: pd.DataFrame) -> tuple[pd.DataFrame, list[dict]]:
     return normalized, mapping
 
 
-def profile_frame(frame: pd.DataFrame, mapping: list[dict]) -> dict:
+def profile_frame(
+    frame: pd.DataFrame,
+    mapping: list[dict],
+    type_overrides: dict[str, str] | None = None,
+    roles: dict[str, str] | None = None,
+) -> dict:
+    type_overrides = type_overrides or {}
+    roles = roles or {}
     sampled = len(frame) > settings.max_profile_sample_rows
     sample = frame.head(settings.max_profile_sample_rows) if sampled else frame
     columns = []
@@ -134,7 +140,7 @@ def profile_frame(frame: pd.DataFrame, mapping: list[dict]) -> dict:
         series = sample[meta["column_id"]]
         non_null = series.dropna()
         distinct = int(non_null.nunique(dropna=True))
-        semantic = _semantic_type(non_null)
+        semantic = type_overrides.get(meta["column_id"]) or _semantic_type(non_null)
         possible_id = _possible_id(non_null, semantic, meta["display_name"])
         issues = []
         if series.isna().any():
@@ -150,6 +156,8 @@ def profile_frame(frame: pd.DataFrame, mapping: list[dict]) -> dict:
                 "null_count": int(series.isna().sum()),
                 "distinct_count": distinct,
                 "possible_id": possible_id,
+                "configured_role": roles.get(meta["column_id"], "variable"),
+                "examples": [_safe_example(value) for value in non_null.head(4)],
                 "quality_issue_codes": issues,
             }
         )
@@ -222,11 +230,24 @@ def _possible_id(series: pd.Series, semantic: str, display_name: str = "") -> bo
     if len(series) < 10 or semantic == "datetime":
         return False
     unique_ratio = series.nunique(dropna=True) / max(1, len(series))
-    normalized_name = re.sub(r"[^a-z0-9]+", "_", display_name.lower()).strip("_")
+    ascii_name = unicodedata.normalize("NFKD", display_name).encode("ascii", "ignore").decode()
+    normalized_name = re.sub(r"[^a-z0-9]+", "_", ascii_name.lower()).strip("_")
     id_name = bool(
-        re.search(r"(^id$|_id$|^id_|uuid|codigo|código|code$|numero$|número$)", normalized_name)
+        re.search(r"(^id$|_id$|^id_|uuid|codigo|code$|numero$|operacion)", normalized_name)
     )
     if semantic == "numeric":
         return id_name and unique_ratio >= 0.98
     average_length = series.astype(str).str.len().mean() if len(series) else 0
     return unique_ratio >= 0.98 and (id_name or average_length >= 8)
+
+
+def _safe_example(value):
+    if pd.isna(value):
+        return None
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+    if hasattr(value, "item"):
+        value = value.item()
+    if isinstance(value, str):
+        return value.replace("\n", " ").replace("\r", " ")[:120]
+    return value

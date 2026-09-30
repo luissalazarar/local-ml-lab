@@ -10,11 +10,12 @@ docker compose config
 python3 scripts/smoke.py
 python3 scripts/examples_smoke.py
 python3 scripts/excel_smoke.py
+python3 scripts/preparation_smoke.py
 python3 scripts/cancel_smoke.py
 docker compose exec -T worker python - < scripts/verify_reports.py
 ```
 
-`smoke.py` recorre regresión, clasificación desbalanceada y forecasting mensual usando los Excel principales; verifica métrica principal, PFI fuera de train, matriz de confusión, futuro visible, historial, contexto offline y descargas reales. `examples_smoke.py` ejecuta los cinco presets publicados y exige que ninguno termine como no evaluable. `cancel_smoke.py` cancela durante el último candidato y exige estado `cancelled` sin resultado. `recovery_smoke.py` se usa al detener Valkey: exige HTTP 503 y posterior recuperación.
+`smoke.py` recorre regresión, clasificación desbalanceada y forecasting mensual usando los Excel principales. `preparation_smoke.py` carga el Excel educativo, confirma DMY y coma decimal, marca el ID, segrega conversiones fallidas, crea la versión preparada, abre el XLSX de cinco hojas y prueba que receta/output/lineage sean reproducibles sin alterar el hash original. `examples_smoke.py` ejecuta los seis presets publicados. `cancel_smoke.py` y `recovery_smoke.py` cubren cancelación y recuperación de cola.
 
 Para la puerta de salida usa un checkout limpio y aislado:
 

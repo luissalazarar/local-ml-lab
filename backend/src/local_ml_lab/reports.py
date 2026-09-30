@@ -100,7 +100,7 @@ def create_excel(result: dict, path: Path) -> None:
     sheets = [
         "00_Resumen",
         "01_Calidad_Data",
-        "02_Limpieza",
+        "02_Preparacion",
         "03_Configuracion",
         "04_Modelos_Probados",
         "05_Metricas",
@@ -132,9 +132,7 @@ def create_excel(result: dict, path: Path) -> None:
         summary.write(index, 1, safe_text(value))
     quality = result.get("data_quality", {}).get("columns", [])
     write_table(workbook.get_worksheet_by_name("01_Calidad_Data"), quality, header)
-    write_table(
-        workbook.get_worksheet_by_name("02_Limpieza"), cleaning_rows(quality), header
-    )
+    write_table(workbook.get_worksheet_by_name("02_Preparacion"), preparation_rows(result), header)
     write_table(
         workbook.get_worksheet_by_name("03_Configuracion"),
         [result.get("resolved_config", {})],
@@ -188,8 +186,17 @@ def dictionary_rows(result):
         "Pronóstico futuro": "Meses todavía sin valor real disponible; V1 no incluye intervalos.",
     }
     terms = {"Confiabilidad", "Validación"}
-    metric_terms = {"mae": "MAE", "rmse": "RMSE", "r2": "R²", "accuracy": "Exactitud", "balanced_accuracy": "Exactitud balanceada", "macro_f1": "F1 macro"}
-    terms.update(metric_terms.get(row.get("metric_id"), "") for row in result.get("evaluation_metrics", []))
+    metric_terms = {
+        "mae": "MAE",
+        "rmse": "RMSE",
+        "r2": "R²",
+        "accuracy": "Exactitud",
+        "balanced_accuracy": "Exactitud balanceada",
+        "macro_f1": "F1 macro",
+    }
+    terms.update(
+        metric_terms.get(row.get("metric_id"), "") for row in result.get("evaluation_metrics", [])
+    )
     if result.get("predictions"):
         terms.add("Error")
     if result.get("drivers"):
@@ -198,10 +205,37 @@ def dictionary_rows(result):
         terms.update({"Soporte", "Matriz de confusión"})
     if result.get("problem_type") == "forecasting":
         terms.add("Pronóstico futuro")
-    return [{"termino": term, "definicion": definitions[term]} for term in definitions if term in terms]
+    return [
+        {"termino": term, "definicion": definitions[term]} for term in definitions if term in terms
+    ]
 
 
-def cleaning_rows(columns):
+def preparation_rows(result):
+    preparation = result.get("data_preparation", {})
+    rows = []
+    for item in preparation.get("transformations", []):
+        rows.append(
+            {
+                "version": preparation.get("dataset_version_id"),
+                "columna": item.get("column_id"),
+                "transformacion": item.get("transformation"),
+                "valores_afectados": item.get("affected_count"),
+                "filas_iniciales": preparation.get("rows_input"),
+                "filas_analizadas": preparation.get("rows_analyzed"),
+                "filas_segregadas": preparation.get("rows_quarantined"),
+            }
+        )
+    if preparation.get("target_missing_rows"):
+        rows.append(
+            {
+                "version": preparation.get("dataset_version_id"),
+                "transformacion": "Apartar filas sin resultado para este objetivo",
+                "valores_afectados": preparation["target_missing_rows"],
+            }
+        )
+    if rows:
+        return rows
+    columns = result.get("data_quality", {}).get("columns", [])
     rows = []
     for column in columns:
         actions = []
@@ -286,10 +320,17 @@ def create_pdf(result: dict, path: Path) -> None:
             f"{result.get('dataset_summary', {}).get('row_count', 0)} filas · {result.get('dataset_summary', {}).get('column_count', 0)} columnas",
         ),
         ("Confiabilidad", result.get("reliability", {}).get("primary_level", "No evaluable")),
-        ("Qué significa", "Describe la solidez de la evaluación; no es una probabilidad de acierto."),
+        (
+            "Qué significa",
+            "Describe la solidez de la evaluación; no es una probabilidad de acierto.",
+        ),
         ("Validación", presentation_label(result.get("validation_plan", {}).get("evidence_mode"))),
         ("Modelo seleccionado", selected_model_name(result)),
         ("Métrica principal", presentation_label(result.get("primary_metric_id"))),
+        (
+            "Preparación de datos",
+            preparation_summary_text(result.get("data_preparation", {})),
+        ),
     ]:
         story.extend(
             [
@@ -305,7 +346,9 @@ def create_pdf(result: dict, path: Path) -> None:
     ]
     metrics = [["Métrica", "Valor", "Población", "Rol"]] + [
         [
-            presentation_label(metric.get("metric_id")) if metric.get("metric_id") == "r2" else metric["name"],
+            presentation_label(metric.get("metric_id"))
+            if metric.get("metric_id") == "r2"
+            else metric["name"],
             "No disponible" if metric["value"] is None else f"{metric['value']:.4g}",
             str(metric["n_used"]),
             presentation_label(metric.get("evaluation_role", "")),
@@ -327,7 +370,11 @@ def create_pdf(result: dict, path: Path) -> None:
             ]
             for driver in drivers
         ]
-        story += [Spacer(1, 6 * mm), Paragraph("Variables predictivas", styles["Heading2"]), styled_table(driver_rows)]
+        story += [
+            Spacer(1, 6 * mm),
+            Paragraph("Variables predictivas", styles["Heading2"]),
+            styled_table(driver_rows),
+        ]
     story += [PageBreak(), Paragraph("Limitaciones y advertencias", styles["Heading2"])]
     for text in result.get("limitations", []) or ["Sin advertencias adicionales"]:
         story.append(Paragraph("• " + paragraph_text(text), styles["BodyText"]))
@@ -339,6 +386,18 @@ def create_pdf(result: dict, path: Path) -> None:
         ),
     ]
     document.build(story, onFirstPage=footer, onLaterPages=footer)
+
+
+def preparation_summary_text(preparation):
+    if not preparation:
+        return "Se usó la versión original sin una receta de preparación adicional."
+    return (
+        f"Versión {preparation.get('dataset_version_id', 'no disponible')}; "
+        f"{len(preparation.get('transformations', []))} transformaciones; "
+        f"{preparation.get('rows_input', 0)} filas iniciales; "
+        f"{preparation.get('rows_analyzed', 0)} filas analizadas; "
+        f"{preparation.get('rows_quarantined', 0)} filas segregadas."
+    )
 
 
 def styled_table(rows):
@@ -363,7 +422,11 @@ def result_chart(result):
     problem = result.get("problem_type")
     figure, axis = plt.subplots(figsize=(7.2, 3.6), dpi=120)
     if problem == "regression":
-        points = [row for row in predictions if row.get("actual") is not None and row.get("predicted") is not None]
+        points = [
+            row
+            for row in predictions
+            if row.get("actual") is not None and row.get("predicted") is not None
+        ]
         if not points:
             plt.close(figure)
             return None
@@ -372,11 +435,17 @@ def result_chart(result):
         axis.scatter(actual, predicted, alpha=0.75, color=TURQUOISE, edgecolor=PETROLEUM)
         low, high = min(actual + predicted), max(actual + predicted)
         margin = (high - low or max(abs(low), 1)) * 0.08
-        axis.plot([low - margin, high + margin], [low - margin, high + margin], "--", color="#64748B")
+        axis.plot(
+            [low - margin, high + margin], [low - margin, high + margin], "--", color="#64748B"
+        )
         axis.set_xlim(low - margin, high + margin)
         axis.set_ylim(low - margin, high + margin)
         axis.grid(alpha=0.2)
-        axis.set(xlabel="Real · unidades del resultado", ylabel="Predicho · unidades del resultado", title="Valores reales y predichos · validación")
+        axis.set(
+            xlabel="Real · unidades del resultado",
+            ylabel="Predicho · unidades del resultado",
+            title="Valores reales y predichos · validación",
+        )
     elif problem == "classification":
         matrix = result.get("diagnostics", {}).get("confusion_matrix")
         labels = result.get("diagnostics", {}).get("class_labels", [])
@@ -397,16 +466,38 @@ def result_chart(result):
         if not history or not future:
             plt.close(figure)
             return None
-        validation = [row for row in predictions if row.get("evaluation_role") == "selection_validation"]
-        axis.plot([row["target_period"] for row in history], [row["actual"] for row in history], label="Histórico observado", color=TURQUOISE)
+        validation = [
+            row for row in predictions if row.get("evaluation_role") == "selection_validation"
+        ]
+        axis.plot(
+            [row["target_period"] for row in history],
+            [row["actual"] for row in history],
+            label="Histórico observado",
+            color=TURQUOISE,
+        )
         if validation:
-            axis.plot([row["target_period"] for row in validation], [row["predicted"] for row in validation], label="Validación de selección", color=BLUE, linestyle="--")
-        axis.plot([history[-1]["target_period"]] + [row["target_period"] for row in future], [history[-1]["actual"]] + [row["predicted"] for row in future], label="Pronóstico futuro", color=ORANGE, linestyle="--", marker="o")
+            axis.plot(
+                [row["target_period"] for row in validation],
+                [row["predicted"] for row in validation],
+                label="Validación de selección",
+                color=BLUE,
+                linestyle="--",
+            )
+        axis.plot(
+            [history[-1]["target_period"]] + [row["target_period"] for row in future],
+            [history[-1]["actual"]] + [row["predicted"] for row in future],
+            label="Pronóstico futuro",
+            color=ORANGE,
+            linestyle="--",
+            marker="o",
+        )
         axis.axvline(history[-1]["target_period"], color=ORANGE, linestyle=":", alpha=0.7)
         axis.tick_params(axis="x", labelrotation=45)
         axis.legend()
         axis.grid(axis="y", alpha=0.2)
-        axis.set(title="Histórico, validación y pronóstico mensual", ylabel="Unidades del resultado")
+        axis.set(
+            title="Histórico, validación y pronóstico mensual", ylabel="Unidades del resultado"
+        )
     else:
         plt.close(figure)
         return None
@@ -438,7 +529,11 @@ def footer(canvas, document):
 def report_reading_help(result):
     metric = presentation_label(result.get("primary_metric_id"))
     problem = result.get("problem_type")
-    direction = "más bajo es mejor" if result.get("primary_metric_id") in {"mae", "rmse"} else "más alto es mejor"
+    direction = (
+        "más bajo es mejor"
+        if result.get("primary_metric_id") in {"mae", "rmse"}
+        else "más alto es mejor"
+    )
     if problem == "classification":
         extra = " En la matriz, fila es real, columna es predicho y soporte es la cantidad de casos reales."
     elif problem == "regression":

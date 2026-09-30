@@ -25,6 +25,13 @@ def test_age_sequence_is_not_an_id_but_named_id_is():
     assert columns[1]["possible_id"] is True
 
 
+def test_operation_identifier_with_accent_is_detected():
+    frame, mapping = normalize_columns(
+        pd.DataFrame({"Operación ID": [f"OP-{index:04d}" for index in range(20)]})
+    )
+    assert profile_frame(frame, mapping)["columns"][0]["possible_id"] is True
+
+
 def test_reads_real_csv_xlsx_and_parquet(tmp_path):
     expected = pd.DataFrame({"valor": [1, 2], "grupo": ["a", "b"]})
     csv_path = tmp_path / "data.csv"

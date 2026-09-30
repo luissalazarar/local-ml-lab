@@ -44,6 +44,13 @@ def analyze(frame: pd.DataFrame, profile: dict, config: dict, progress=lambda *_
     if not target or target not in frame:
         raise ValueError("TARGET_REQUIRED")
     usable = frame[frame[target].notna()].copy()
+    target_missing = int(frame[target].isna().sum())
+    if target_missing:
+        preparation = config.setdefault("_preparation", {})
+        preparation["target_missing_rows"] = target_missing
+        preparation["target_missing_note"] = (
+            "Filas sin resultado apartadas para este análisis; el dataset original no cambió."
+        )
     y = usable.pop(target)
     features = resolve_features(usable.columns, target, profile, config)
     x = usable[features]
@@ -56,15 +63,11 @@ def analyze(frame: pd.DataFrame, profile: dict, config: dict, progress=lambda *_
         x, y = x.loc[mask], y.loc[mask]
         if len(y) < 2:
             return not_evaluable(profile, config, "INSUFFICIENT_ROWS", primary_metric)
-        splitter = KFold(
-            n_splits=min(5, len(y)), shuffle=True, random_state=config.get("seed", 42)
-        )
+        splitter = KFold(n_splits=min(5, len(y)), shuffle=True, random_state=config.get("seed", 42))
     else:
         counts = y.value_counts()
         if len(counts) < 2 or counts.min() < 2:
-            return not_evaluable(
-                profile, config, "CLASS_SUPPORT_INSUFFICIENT", primary_metric
-            )
+            return not_evaluable(profile, config, "CLASS_SUPPORT_INSUFFICIENT", primary_metric)
         splitter = StratifiedKFold(
             n_splits=min(5, int(counts.min())),
             shuffle=True,
@@ -111,16 +114,12 @@ def analyze(frame: pd.DataFrame, profile: dict, config: dict, progress=lambda *_
             )
     eligible = [candidate for candidate in candidates if candidate["eligible_for_selection"]]
     if not eligible:
-        return not_evaluable(
-            profile, config, "ALL_CANDIDATES_FAILED", primary_metric, candidates
-        )
+        return not_evaluable(profile, config, "ALL_CANDIDATES_FAILED", primary_metric, candidates)
     direction = SUPPORTED_PRIMARY[problem][primary_metric]
     winner = sorted(
         eligible,
         key=lambda candidate: (
-            -candidate["primary_value"]
-            if direction == "max"
-            else candidate["primary_value"],
+            -candidate["primary_value"] if direction == "max" else candidate["primary_value"],
             candidate["complexity_rank"],
             candidate["model_id"],
         ),
@@ -156,7 +155,9 @@ def analyze(frame: pd.DataFrame, profile: dict, config: dict, progress=lambda *_
             zip(y.tolist(), selected_pred.tolist(), strict=False), 1
         )
     ]
-    baseline = next((candidate for candidate in candidates if candidate["complexity_rank"] == 0), None)
+    baseline = next(
+        (candidate for candidate in candidates if candidate["complexity_rank"] == 0), None
+    )
     diagnostics = {}
     if problem == "classification":
         labels = sorted({str(value) for value in y.tolist()})
@@ -164,9 +165,7 @@ def analyze(frame: pd.DataFrame, profile: dict, config: dict, progress=lambda *_
         pred_text = [str(value) for value in selected_pred.tolist()]
         diagnostics = {
             "class_labels": labels,
-            "class_support": [
-                {"label": label, "count": y_text.count(label)} for label in labels
-            ],
+            "class_support": [{"label": label, "count": y_text.count(label)} for label in labels],
             "confusion_matrix": confusion_matrix(y_text, pred_text, labels=labels).tolist(),
         }
     return build_result(
@@ -330,7 +329,9 @@ def forecast_result(frame, profile, config, progress, primary_metric):
     actual = values[-horizon:]
     train = values[:-horizon]
     last_pred = np.repeat(train[-1], horizon)
-    candidates = [forecast_candidate("last_value", "Último valor", actual, last_pred, primary_metric)]
+    candidates = [
+        forecast_candidate("last_value", "Último valor", actual, last_pred, primary_metric)
+    ]
     seasonal_pred = None
     if len(train) >= 12:
         seasonal_pred = np.array([train[-12 + (index % 12)] for index in range(horizon)])
@@ -346,7 +347,9 @@ def forecast_result(frame, profile, config, progress, primary_metric):
     winner = min(
         candidates,
         key=lambda candidate: (
-            candidate["primary_value"], candidate["complexity_rank"], candidate["model_id"]
+            candidate["primary_value"],
+            candidate["complexity_rank"],
+            candidate["model_id"],
         ),
     )
     eval_pred = last_pred if winner["model_id"] == "last_value" else seasonal_pred
@@ -375,7 +378,8 @@ def forecast_result(frame, profile, config, progress, primary_metric):
             "error": float(predicted_value - actual_value),
             "evaluation_role": "selection_validation",
             "horizon": index,
-            "target_period": data["period"].iloc[-horizon + index - 1]
+            "target_period": data["period"]
+            .iloc[-horizon + index - 1]
             .to_timestamp()
             .date()
             .isoformat(),
@@ -456,7 +460,11 @@ def build_result(
     if baseline_value is not None and winner["primary_value"] is not None:
         if direction == "max" and winner["primary_value"] > baseline_value + 0.01:
             utility = "better_than_baseline"
-        elif direction == "min" and baseline_value != 0 and winner["primary_value"] < baseline_value * 0.99:
+        elif (
+            direction == "min"
+            and baseline_value != 0
+            and winner["primary_value"] < baseline_value * 0.99
+        ):
             utility = "better_than_baseline"
     limitations = [
         "La misma validación participó en la selección del modelo; no es una prueba final independiente.",
@@ -485,6 +493,7 @@ def build_result(
         "requested_config": config,
         "resolved_config": {**config, "primary_metric": primary_metric},
         "data_quality": profile,
+        "data_preparation": config.get("_preparation", {}),
         "validation_plan": {
             "strategy": evidence,
             "evidence_mode": evidence,
@@ -536,6 +545,7 @@ def exploration_result(profile, config):
             "column_count": profile["column_count"],
         },
         "data_quality": profile,
+        "data_preparation": config.get("_preparation", {}),
         "requested_config": config,
         "resolved_config": config,
         "validation_plan": {"strategy": "none", "limitations": []},

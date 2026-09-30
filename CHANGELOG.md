@@ -1,8 +1,13 @@
 # Changelog
 
-## Sin publicar
+## 0.4.0 — 2026-09-30
 
-- Sin cambios todavía.
+- Añadido el paso explícito Preparar con tipo, uso y transformación separados, recomendaciones conservadoras y preview antes/después.
+- Incorporadas conversiones confirmadas de fechas, números localizados, porcentajes y moneda única; trim, vacío a faltante, duplicados exactos, filtros seguros y agregación mensual explícita.
+- Extendida `DatasetVersion` con receta estricta, cuarentena, perfiles original/preparado, hashes deterministas y lineage sin modificar el archivo original.
+- Añadidas descargas de receta JSON y Excel preparado con cinco hojas y protección contra fórmulas.
+- Integrada la preparación en objetivo, forecasting, historial, resultados, Excel/PDF y un sexto ejemplo educativo.
+- Añadidas pruebas de separación contra leakage, determinismo, conversiones, segregación y flujo frontend.
 
 ## 0.3.0 — 2026-09-30
 

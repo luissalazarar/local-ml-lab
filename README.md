@@ -1,4 +1,4 @@
-# Laboratorio ML · v0.3.0000
+# Laboratorio ML · v0.4.0000
 
 ¿Tienes un Excel y quieres probar machine learning, pero no sabes por dónde empezar?
 
@@ -11,6 +11,7 @@ La identidad visual (símbolo, variantes y tamaños de uso), los tokens y el est
 ## Qué puedes hacer
 
 - Explorar Excel (.xlsx), CSV y Parquet con tipos primitivos. Excel es el camino principal.
+- Crear versiones preparadas auditables con tipos y usos confirmados, preview antes/después, filas segregadas y receta JSON reutilizable.
 - Estimar un valor, predecir categorías o pronosticar una serie mensual regular.
 - Comparar referencias simples, modelos lineales y árboles.
 - Revisar calidad, exclusiones, métricas, candidatos fallidos y límites.
@@ -41,11 +42,14 @@ En Windows también puedes ejecutar `powershell -ExecutionPolicy Bypass -File sc
 
 ## Flujo de uso
 
-1. Sube tu Excel o archivo de datos, o elige uno de los cinco ejemplos sintéticos.
+1. Sube tu Excel o archivo de datos, o elige uno de los seis ejemplos sintéticos.
 2. Revisa cómo se interpretaron columnas, faltantes, IDs y duplicados.
-3. Elige una pregunta y target; para forecasting, también fecha y horizonte.
-4. Revisa el preflight y ejecuta.
-5. Compara confiabilidad, referencia, métricas, drivers y exportaciones.
+3. En **Preparar**, confirma tipo, uso y transformaciones; revisa el antes/después y crea una versión nueva sin tocar el original.
+4. Elige una pregunta y target; para forecasting, también fecha, horizonte y, solo si corresponde, agregación mensual.
+5. Revisa el preflight y ejecuta.
+6. Compara confiabilidad, referencia, métricas, drivers y exportaciones.
+
+El flujo es **Original → Preparado → Modelo**. Preparar no significa que Laboratorio ML pueda saber si tus datos son correctos para tu negocio. Las transformaciones que aprenden de los datos continúan ocurriendo únicamente dentro del entrenamiento para evitar fugas.
 
 La confiabilidad resume la solidez de la evaluación; no es una probabilidad de acierto. Una referencia sencilla puede ganar. La importancia se calcula fuera del train de cada fold, pero esa validación también participa en la selección y no demuestra causalidad.
 
@@ -55,7 +59,7 @@ El núcleo funciona offline después de descargar imágenes y dependencias. Los 
 
 ## Exportaciones
 
-Excel contiene resumen, calidad, limpieza real, configuración, candidatos, métricas, predicciones, drivers, errores, advertencias, validación y diccionario. PDF contiene métricas, gráficos, drivers y límites. Ambos nacen del mismo snapshot analítico inmutable; cada exportación tiene identidad y archivo propios.
+El Excel preparado contiene datos activos, filas segregadas, transformaciones, comparación de calidad y diccionario. Los reportes del análisis contienen resumen, preparación de datos, configuración, candidatos, métricas, predicciones, drivers, errores, advertencias, validación y diccionario. PDF contiene preparación, métricas, gráficos, drivers y límites. Todos nacen de snapshots inmutables.
 
 ## Limitaciones y qué no hace
 
@@ -63,7 +67,7 @@ V1 no ofrece inferencia por lotes, clustering, detección de anomalías por mode
 
 ## Probar sin usar tus propios datos
 
-La pantalla de ejemplos ofrece cinco recorridos Excel-first: estimar un valor, predecir una categoría, estimar próximos meses, entender variables útiles y explorar calidad. Cada workbook tiene una hoja `Datos` y una hoja `Guía`; la configuración recomendada se muestra antes de ejecutar y puede modificarse.
+La pantalla de ejemplos ofrece seis recorridos Excel-first. El sexto enseña a preparar una fecha DMY, un monto con coma decimal, un ID, espacios, faltantes y un duplicado exacto antes de una regresión. Cada workbook tiene una hoja `Datos` y una hoja `Guía`; la configuración recomendada se muestra antes de ejecutar y puede modificarse.
 
 `examples/` contiene únicamente datos sintéticos reproducibles con semilla fija. CSV y Parquet se conservan para pruebas de formato y CI. Regenera los archivos con `cd backend && uv run python ../scripts/generate_examples.py`.
 
