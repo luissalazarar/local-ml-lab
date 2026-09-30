@@ -1,6 +1,7 @@
 name: local-ml-lab
 services:
   frontend:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: frontend/Dockerfile
@@ -28,6 +29,7 @@ services:
       timeout: 3s
       retries: 10
   api:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: backend/Dockerfile
@@ -46,6 +48,8 @@ services:
       MAX_ROWS: ${MAX_ROWS:-200000}
       MAX_COLUMNS: ${MAX_COLUMNS:-300}
       MAX_CELLS: ${MAX_CELLS:-2000000}
+      ANALYSIS_TIMEOUT_SECONDS: ${ANALYSIS_TIMEOUT_SECONDS:-1200}
+      HEARTBEAT_INTERVAL_SECONDS: ${HEARTBEAT_INTERVAL_SECONDS:-2}
       SHAP_ENABLED: ${SHAP_ENABLED:-false}
     volumes: [local_ml_data:/data]
     networks: [edge, core]
@@ -62,6 +66,7 @@ services:
       timeout: 4s
       retries: 15
   worker:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: backend/Dockerfile
@@ -81,17 +86,19 @@ services:
     cpus: 2.0
     pids_limit: 256
     tmpfs: [/tmp:size=256m]
+    stop_grace_period: 15s
     healthcheck:
       test: [CMD, python, -m, local_ml_lab.worker_health]
       interval: 15s
       timeout: 5s
       retries: 8
   queue:
+    restart: unless-stopped
     image: valkey/valkey:8.1.10-alpine
     user: "999:1000"
-    command: [valkey-server, --save, "", --appendonly, "no", --maxmemory, 128mb, --maxmemory-policy, noeviction]
+    command: [valkey-server, --appendonly, "yes", --appendfsync, everysec, --dir, /data, --maxmemory, 128mb, --maxmemory-policy, noeviction]
+    volumes: [local_ml_queue:/data]
     networks: [core]
-    init: true
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
@@ -108,3 +115,4 @@ networks:
     internal: true
 volumes:
   local_ml_data: {}
+  local_ml_queue: {}

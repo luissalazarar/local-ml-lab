@@ -1,32 +1,113 @@
 import hashlib
 import json
+import multiprocessing
+import os
+import queue as queue_module
+import time
 from datetime import UTC, datetime
+from pathlib import Path
+from uuid import uuid4
 
 import pandas as pd
+import psutil
 from redis import Redis
 from rq import Queue
 from rq.serializers import JSONSerializer
+from sqlalchemy import select
 
 from local_ml_lab.data.readers import inspect_file, normalize_columns, profile_frame, read_frame
 from local_ml_lab.db.models import Artifact, Dataset, DatasetVersion, Event, Job, Preflight, Run
 from local_ml_lab.db.session import SessionLocal
-from local_ml_lab.ml.engine import analyze
+from local_ml_lab.ml.engine import analyze, resolve_primary_metric
 from local_ml_lab.reports import create_excel, create_pdf, sha
 from local_ml_lab.settings import settings
 
 
+class JobCancelled(Exception):
+    pass
+
+
+class JobTimedOut(Exception):
+    pass
+
+
+def queue_connection():
+    return Redis.from_url(settings.queue_url, socket_connect_timeout=2, socket_timeout=3)
+
+
 def enqueue(job_id: str) -> bool:
     try:
+        connection = queue_connection()
+        connection.ping()
         queue = Queue(
             "analysis",
-            connection=Redis.from_url(settings.queue_url),
-            default_timeout=1500,
+            connection=connection,
+            default_timeout=settings.analysis_timeout_seconds + 60,
             serializer=JSONSerializer,
         )
-        queue.enqueue(process_job, job_id, job_id=job_id, result_ttl=3600, failure_ttl=86400)
+        existing = queue.fetch_job(job_id)
+        if existing:
+            status = existing.get_status(refresh=True)
+            if status in {"queued", "started", "scheduled", "deferred"}:
+                return True
+            existing.delete()
+        queue.enqueue(
+            process_job,
+            job_id,
+            job_id=job_id,
+            result_ttl=3600,
+            failure_ttl=86400,
+        )
         return True
     except Exception:
         return False
+
+
+def reconcile_queued_jobs() -> list[str]:
+    """Reconcile the durable SQLite outbox without disturbing running jobs."""
+    with SessionLocal() as db:
+        pending = db.scalars(select(Job.id).where(Job.status == "queued")).all()
+    return [job_id for job_id in pending if enqueue(job_id)]
+
+
+def recover_pending_jobs() -> dict:
+    """Recover SQLite outbox entries after a worker/queue restart."""
+    recovered = []
+    interrupted = []
+    with SessionLocal() as db:
+        active = db.scalars(
+            select(Job).where(Job.status.in_(["queued", "running", "cancel_requested"]))
+        ).all()
+        for job in active:
+            if job.cancel_requested_at:
+                job.status = "cancelled"
+                job.finished_at = datetime.now(UTC)
+                continue
+            if job.status in {"running", "cancel_requested"}:
+                job.status = "interrupted"
+                job.error_code = "WORKER_RESTARTED"
+                job.finished_at = datetime.now(UTC)
+                interrupted.append(job.id)
+                replacement = Job(
+                    job_type=job.job_type,
+                    run_id=job.run_id,
+                    dataset_version_id=job.dataset_version_id,
+                    payload=job.payload,
+                    progress={"stage": "recovery", "message": "Recuperado tras reinicio"},
+                )
+                db.add(replacement)
+                db.flush()
+                if job.run_id:
+                    run = db.get(Run, job.run_id)
+                    if run:
+                        run.latest_job_id = replacement.id
+                        run.status = "queued"
+                recovered.append(replacement.id)
+            else:
+                recovered.append(job.id)
+        db.commit()
+    enqueued = [job_id for job_id in recovered if enqueue(job_id)]
+    return {"interrupted": interrupted, "recovered": enqueued}
 
 
 def emit(db, job, event_type, stage, message, completed=0, total=None):
@@ -56,10 +137,10 @@ def process_job(job_id: str):
         if not job or job.status != "queued":
             return
         if job.cancel_requested_at:
-            job.status = "cancelled"
-            db.commit()
+            _finish_cancelled(db, job)
             return
         job.status = "running"
+        job.heartbeat_at = datetime.now(UTC)
         db.commit()
         try:
             if job.job_type == "inspect_dataset":
@@ -72,30 +153,62 @@ def process_job(job_id: str):
                 run_analysis(db, job)
             elif job.job_type == "render_export":
                 render_export(db, job)
+            else:
+                raise ValueError("UNKNOWN_JOB_TYPE")
+            db.refresh(job)
+            if job.cancel_requested_at:
+                raise JobCancelled()
             job.status = "succeeded"
             job.finished_at = datetime.now(UTC)
             emit(db, job, "completed", "finished", "Trabajo completado", 1, 1)
+        except JobCancelled:
+            _finish_cancelled(db, job)
         except Exception as exc:
-            job.status = "failed"
-            job.error_code = type(exc).__name__
-            job.finished_at = datetime.now(UTC)
-            db.add(
-                Event(
-                    job_id=job.id,
-                    run_id=job.run_id,
-                    event_type="failed",
-                    stage=job.progress.get("stage", "unknown"),
-                    severity="error",
-                    message_code=type(exc).__name__,
-                    payload={},
-                )
-            )
-            if job.run_id:
-                run = db.get(Run, job.run_id)
-                if run:
-                    run.status = "failed"
-            db.commit()
+            _finish_failed(db, job, exc)
             raise
+
+
+def _finish_cancelled(db, job):
+    job.status = "cancelled"
+    job.error_code = None
+    job.finished_at = datetime.now(UTC)
+    if job.run_id and job.job_type == "analyze":
+        run = db.get(Run, job.run_id)
+        if run and not run.result_available:
+            run.status = "cancelled"
+    db.add(
+        Event(
+            job_id=job.id,
+            run_id=job.run_id,
+            event_type="cancelled",
+            stage=job.progress.get("stage", "unknown"),
+            message_code="CANCELLED_BY_USER",
+            payload={},
+        )
+    )
+    db.commit()
+
+
+def _finish_failed(db, job, exc):
+    job.status = "failed"
+    job.error_code = type(exc).__name__
+    job.finished_at = datetime.now(UTC)
+    db.add(
+        Event(
+            job_id=job.id,
+            run_id=job.run_id,
+            event_type="failed",
+            stage=job.progress.get("stage", "unknown"),
+            severity="error",
+            message_code=type(exc).__name__,
+            payload={"detail": str(exc)[:300]},
+        )
+    )
+    if job.run_id and job.job_type == "analyze":
+        run = db.get(Run, job.run_id)
+        if run and not run.result_available:
+            run.status = "failed"
+    db.commit()
 
 
 def inspect_dataset(db, job):
@@ -113,6 +226,7 @@ def prepare_dataset(db, job):
     path = settings.data_root / f"uploads/{dataset.id}/original{dataset.safe_extension}"
     emit(db, job, "stage_started", "parse", "Interpretando datos")
     frame, mapping = normalize_columns(read_frame(path, version.parser_options))
+    _raise_if_cancelled(db, job)
     out = settings.data_root / "datasets" / version.id
     out.mkdir(parents=True, exist_ok=True)
     frame.to_parquet(out / "canonical.parquet", index=False)
@@ -136,17 +250,53 @@ def preflight(db, job):
     version = db.get(DatasetVersion, config["dataset_version_id"])
     if not version or version.status != "ready":
         raise ValueError("DATASET_VERSION_NOT_READY")
+    profile = json.loads((settings.data_root / version.profile_ref).read_text(encoding="utf-8"))
+    known = {column["column_id"] for column in profile["columns"]}
+    referenced = set(config.get("included_column_ids") or []) | set(
+        config.get("excluded_column_ids") or []
+    )
+    if referenced - known:
+        raise ValueError("UNKNOWN_COLUMN_IDS")
+    if (set(config.get("included_column_ids") or []) & set(config.get("excluded_column_ids") or [])) - {
+        config.get("target_column_id")
+    }:
+        raise ValueError("COLUMN_INCLUDED_AND_EXCLUDED")
+    if config["problem_type"] != "exploration" and not config.get("target_column_id"):
+        raise ValueError("TARGET_REQUIRED")
+    if config["problem_type"] == "forecasting" and not config.get("date_column_id"):
+        raise ValueError("FORECAST_COLUMNS_REQUIRED")
+    if config["problem_type"] != "exploration":
+        config["primary_metric"] = resolve_primary_metric(
+            config["problem_type"], config.get("primary_metric")
+        )
     warnings = []
     if version.row_count < 20:
         warnings.append("SMALL_DATASET")
-    if config["problem_type"] != "exploration" and not config.get("target_column_id"):
-        raise ValueError("TARGET_REQUIRED")
+    if profile.get("duplicate_count"):
+        warnings.append("DEPENDENT_DUPLICATES_REQUIRE_REVIEW")
     pf.resolved_config = config
     pf.config_sha256 = canonical_hash(config)
     pf.can_run = True
     pf.status = "ready"
     pf.warning_codes = warnings
     db.commit()
+
+
+def _analysis_child(frame_path, profile_path, config, result_path, updates):
+    try:
+        frame = pd.read_parquet(frame_path)
+        profile = json.loads(Path(profile_path).read_text(encoding="utf-8"))
+
+        def progress(stage, message, completed, total):
+            updates.put(("progress", stage, message, completed, total))
+
+        result = analyze(frame, profile, config, progress)
+        Path(result_path).write_text(
+            json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8"
+        )
+        updates.put(("done",))
+    except BaseException as exc:
+        updates.put(("error", type(exc).__name__, str(exc)[:500]))
 
 
 def run_analysis(db, job):
@@ -156,33 +306,111 @@ def run_analysis(db, job):
     run.status = "running"
     db.commit()
     emit(db, job, "stage_started", "prepare", "Preparando variables")
-    frame = pd.read_parquet(settings.data_root / version.canonical_ref)
-    profile = json.loads((settings.data_root / version.profile_ref).read_text(encoding="utf-8"))
-
-    def progress(stage, message, done, total):
-        db.refresh(job)
-        if job.cancel_requested_at:
-            raise RuntimeError("CANCELLED")
-        emit(db, job, "candidate_started", stage, message, done, total)
-
-    result = analyze(frame, profile, pf.resolved_config, progress)
-    result["run_id"] = run.id
     out = settings.data_root / "runs" / run.id
     out.mkdir(parents=True, exist_ok=True)
-    path = out / "analysis_result.json"
-    raw = json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False).encode()
-    path.write_bytes(raw)
-    (out / "analysis_config.json").write_text(
-        json.dumps(pf.resolved_config, ensure_ascii=False, indent=2), encoding="utf-8"
+    pending_path = out / f".analysis-{job.id}.json"
+    context = multiprocessing.get_context("spawn")
+    updates = context.Queue()
+    process = context.Process(
+        target=_analysis_child,
+        args=(
+            str(settings.data_root / version.canonical_ref),
+            str(settings.data_root / version.profile_ref),
+            pf.resolved_config,
+            str(pending_path),
+            updates,
+        ),
+        name=f"analysis-{job.id}",
     )
-    run.result_available = True
-    run.result_ref = f"runs/{run.id}/analysis_result.json"
-    run.result_sha256 = hashlib.sha256(raw).hexdigest()
-    run.status = "succeeded"
-    run.evidence_mode = result.get("validation_plan", {}).get("evidence_mode")
-    run.analytical_outcome = result["analytical_outcome"]
-    run.finished_at = datetime.now(UTC)
-    db.commit()
+    process.start()
+    deadline = time.monotonic() + settings.analysis_timeout_seconds
+    last_heartbeat = 0.0
+    child_error = None
+    try:
+        while process.is_alive():
+            now = time.monotonic()
+            db.refresh(job)
+            if job.cancel_requested_at:
+                terminate_process_tree(process.pid)
+                process.join(timeout=5)
+                raise JobCancelled()
+            if now >= deadline:
+                terminate_process_tree(process.pid)
+                process.join(timeout=5)
+                raise JobTimedOut("ANALYSIS_TIMEOUT")
+            child_error = _drain_updates(db, job, updates, child_error)
+            if now - last_heartbeat >= settings.heartbeat_interval_seconds:
+                job.heartbeat_at = datetime.now(UTC)
+                db.commit()
+                last_heartbeat = now
+            process.join(timeout=0.25)
+        child_error = _drain_updates(db, job, updates, child_error)
+        if child_error:
+            raise RuntimeError(f"{child_error[0]}: {child_error[1]}")
+        if process.exitcode != 0 or not pending_path.exists():
+            raise RuntimeError("ANALYSIS_PROCESS_FAILED")
+        _raise_if_cancelled(db, job)
+        result = json.loads(pending_path.read_text(encoding="utf-8"))
+        result["run_id"] = run.id
+        raw = json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False).encode()
+        final_path = out / "analysis_result.json"
+        final_pending = out / f".publish-{job.id}.json"
+        final_pending.write_bytes(raw)
+        _raise_if_cancelled(db, job)
+        os.replace(final_pending, final_path)
+        (out / "analysis_config.json").write_text(
+            json.dumps(pf.resolved_config, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        run.result_available = True
+        run.result_ref = f"runs/{run.id}/analysis_result.json"
+        run.result_sha256 = hashlib.sha256(raw).hexdigest()
+        run.status = "succeeded"
+        run.evidence_mode = result.get("validation_plan", {}).get("evidence_mode")
+        run.analytical_outcome = result["analytical_outcome"]
+        run.finished_at = datetime.now(UTC)
+        db.commit()
+    finally:
+        if process.is_alive():
+            terminate_process_tree(process.pid)
+            process.join(timeout=5)
+        pending_path.unlink(missing_ok=True)
+
+
+def _drain_updates(db, job, updates, child_error):
+    while True:
+        try:
+            update = updates.get_nowait()
+        except queue_module.Empty:
+            return child_error
+        if update[0] == "progress":
+            _, stage, message, completed, total = update
+            emit(db, job, "progress", stage, message, completed, total)
+        elif update[0] == "error":
+            child_error = (update[1], update[2])
+
+
+def terminate_process_tree(pid: int) -> None:
+    try:
+        parent = psutil.Process(pid)
+    except psutil.NoSuchProcess:
+        return
+    descendants = parent.children(recursive=True)
+    for process in descendants:
+        process.terminate()
+    _, alive = psutil.wait_procs(descendants, timeout=2)
+    for process in alive:
+        process.kill()
+    psutil.wait_procs(alive, timeout=1)
+    try:
+        parent.terminate()
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            if not parent.is_running() or parent.status() == psutil.STATUS_ZOMBIE:
+                return
+            time.sleep(0.05)
+        parent.kill()
+    except psutil.NoSuchProcess:
+        pass
 
 
 def render_export(db, job):
@@ -190,22 +418,37 @@ def render_export(db, job):
     result = json.loads((settings.data_root / run.result_ref).read_text(encoding="utf-8"))
     out = settings.data_root / "runs" / run.id / "artifacts"
     out.mkdir(parents=True, exist_ok=True)
-    for kind in job.payload["formats"]:
-        path = out / f"reporte.{kind}"
-        create_excel(result, path) if kind == "xlsx" else create_pdf(result, path)
-        db.add(
-            Artifact(
-                run_id=run.id,
-                kind=kind,
-                relative_path=str(path.relative_to(settings.data_root)).replace("\\", "/"),
-                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                if kind == "xlsx"
-                else "application/pdf",
-                size_bytes=path.stat().st_size,
-                sha256=sha(path),
+    for kind in dict.fromkeys(job.payload["formats"]):
+        _raise_if_cancelled(db, job)
+        artifact_id = str(uuid4())
+        path = out / f"reporte-{artifact_id}.{kind}"
+        pending = out / f".{artifact_id}.{kind}.tmp"
+        try:
+            create_excel(result, pending) if kind == "xlsx" else create_pdf(result, pending)
+            _raise_if_cancelled(db, job)
+            os.replace(pending, path)
+            db.add(
+                Artifact(
+                    id=artifact_id,
+                    run_id=run.id,
+                    kind=kind,
+                    relative_path=str(path.relative_to(settings.data_root)).replace("\\", "/"),
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    if kind == "xlsx"
+                    else "application/pdf",
+                    size_bytes=path.stat().st_size,
+                    sha256=sha(path),
+                )
             )
-        )
-    db.commit()
+            db.commit()
+        finally:
+            pending.unlink(missing_ok=True)
+
+
+def _raise_if_cancelled(db, job):
+    db.refresh(job)
+    if job.cancel_requested_at:
+        raise JobCancelled()
 
 
 def canonical_hash(value) -> str:

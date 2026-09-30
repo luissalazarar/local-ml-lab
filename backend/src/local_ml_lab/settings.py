@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     max_cells: int = 2_000_000
     max_profile_sample_rows: int = 10_000
     max_class_labels: int = 50
+    analysis_timeout_seconds: int = Field(default=1200, ge=10, le=7200)
+    heartbeat_interval_seconds: int = Field(default=2, ge=1, le=30)
     shap_enabled: bool = False
     openai_default_model: str = "gpt-4.1-mini-2025-04-14"
     openai_timeout_seconds: int = 45

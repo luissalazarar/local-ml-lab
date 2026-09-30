@@ -5,7 +5,6 @@
 **/.pytest_cache
 frontend/node_modules
 frontend/dist
-data
-artifacts
+/data
+/artifacts
 *.log
-

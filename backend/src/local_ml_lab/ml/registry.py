@@ -88,5 +88,5 @@ REGISTRY = {
 def specs(task: str, depth: str):
     values = REGISTRY[task]
     if depth == "quick":
-        return values[:3]
+        return values[:2]
     return values

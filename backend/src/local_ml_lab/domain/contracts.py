@@ -16,8 +16,9 @@ class AnalysisConfig(StrictModel):
     date_column_id: str | None = None
     included_column_ids: list[str] = Field(default_factory=list)
     excluded_column_ids: list[str] = Field(default_factory=list)
-    depth: Literal["quick", "recommended", "exhaustive"] = "quick"
+    depth: Literal["quick", "recommended"] = "quick"
     primary_metric: str | None = None
+    validation_context: Literal["independent_records"] = "independent_records"
     seed: int = 42
     forecast_options: dict | None = None
 
