@@ -18,7 +18,7 @@ const goals: Array<{ id: Goal; title: string; desc: string }> = [
   {
     id: "forecast",
     title: "Estimar próximas fechas",
-    desc: "Para una serie regular en el tiempo.",
+    desc: "Para una serie mensual, sin meses faltantes.",
   },
   {
     id: "drivers",
@@ -480,7 +480,7 @@ export function Wizard() {
               <label>
                 Métrica principal
                 <select value={primaryMetric || defaultMetric} onChange={(event) => setPrimaryMetric(event.target.value)}>
-                  {resolvedProblem === "classification" ? <><option value="balanced_accuracy">Balanced accuracy</option><option value="macro_f1">Macro F1</option><option value="accuracy">Accuracy</option></> : <><option value="mae">MAE</option><option value="rmse">RMSE</option></>}
+                  {resolvedProblem === "classification" ? <><option value="balanced_accuracy">Exactitud balanceada</option><option value="macro_f1">F1 macro</option><option value="accuracy">Exactitud</option></> : <><option value="mae">MAE</option><option value="rmse">RMSE</option></>}
                 </select>
               </label>
             )}

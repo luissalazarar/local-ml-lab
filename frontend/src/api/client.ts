@@ -1,3 +1,5 @@
+import { systemError } from '../presentation/labels'
+
 let csrf = ''
 
 export async function bootstrap() {
@@ -16,7 +18,7 @@ export async function api<T>(path:string, options:RequestInit = {}):Promise<T> {
   if (!res.ok) {
     const body = await res.json().catch(()=>null)
     const detail = body?.error?.message ?? body?.detail
-    throw new Error(typeof detail === 'string' ? detail : detail?.message ?? `Error ${res.status}`)
+    throw new Error(systemError(typeof detail === 'string' ? detail : detail?.message ?? `Error ${res.status}`))
   }
   return res.json()
 }
@@ -36,4 +38,4 @@ export type ColumnProfile = {column_id:string,display_name:string,inferred_seman
 export type Profile = {row_count:number,column_count:number,duplicate_count:number,columns:ColumnProfile[],sampled:boolean}
 export type Run = {id:string,display_name:string,goal:string,problem_type:string,status:string,result_available:boolean,created_at:string,latest_job_id?:string,reliability?:string}
 export type Prediction = {row_id?:string,record_id?:string,target_period?:string,evaluation_role:string,actual?:unknown,predicted?:unknown,error?:unknown,unit?:string}
-export type Result = {run_id:string,goal:string,problem_type:string,primary_metric_id:string|null,dataset_summary:{row_count:number,column_count:number},data_quality:{columns:Array<{column_id:string,display_name:string}>},validation_plan:{population_scope?:string,evidence_mode?:string},selection_decision?:{model_id:string},evaluation_metrics:Array<{metric_id:string,name:string,value:number|null,unit:string,n_used:number,reason_code?:string}>,candidates:Array<{model_id:string,display_name:string,status:string,primary_value?:number|null}>,baseline_comparison?:{observed_predictive_utility:string},reliability:{primary_level:string,reasons:string[],is_probability:boolean},drivers:Array<{source_column_id:string,importance_mean:number,evaluation_role?:string}>,diagnostics:{class_labels?:string[],class_support?:Array<{label:string,count:number}>,confusion_matrix?:number[][]},limitations:string[],predictions:Prediction[]}
+export type Result = {run_id:string,goal:string,problem_type:string,analytical_outcome?:string,primary_metric_id:string|null,dataset_summary:{row_count:number,column_count:number},data_quality:{columns:Array<{column_id:string,display_name:string}>},validation_plan:{strategy?:string,population_scope?:string,evidence_mode?:string,limitations?:string[]},selection_decision?:{model_id:string},evaluation_metrics:Array<{metric_id:string,name:string,value:number|null,unit:string,n_used:number,evaluation_role?:string,reason_code?:string}>,candidates:Array<{model_id:string,display_name:string,status:string,primary_value?:number|null}>,baseline_comparison?:{baseline_model_id?:string|null,observed_predictive_utility:string},reliability:{primary_level:string,reasons:string[],is_probability:boolean},drivers:Array<{source_column_id:string,importance_mean:number,importance_std?:number,evaluation_role?:string,warnings?:string[]}>,diagnostics:{class_labels?:string[],class_support?:Array<{label:string,count:number}>,confusion_matrix?:number[][]},limitations:string[],predictions:Prediction[]}

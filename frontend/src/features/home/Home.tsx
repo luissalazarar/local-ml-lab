@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 const capabilities = [
   ['Estimar un valor', 'Duración, cantidad, consumo o costo.'],
   ['Predecir una categoría', 'Sí/no o varias categorías.'],
-  ['Estimar próximos meses', 'Una serie mensual regular, sin comprimir huecos.'],
+  ['Estimar próximos meses', 'Una serie mensual, sin meses faltantes.'],
   ['Entender variables útiles', 'Importancia predictiva, no causalidad.'],
   ['Explorar la data', 'Calidad, tipos y problemas sin entrenar.'],
 ]
@@ -14,11 +14,11 @@ export function Home() {
     <main>
       <section className="hero">
         <div>
-          <span className="eyebrow">Procesamiento local · CPU first</span>
+          <span className="eyebrow">Procesamiento local · Sin GPU obligatoria</span>
           <h1>Tu data puede contar una historia.<br /><em>Primero hay que comprobarla.</em></h1>
           <p>
-            Sube tu archivo, dinos qué quieres estimar o entender y revisaremos la calidad,
-            compararemos referencias y modelos, y explicaremos los límites sin inventar certeza.
+            Sube tu archivo, elige qué quieres estimar o entender y revisaremos la calidad.
+            Esta beta exploratoria compara referencias y modelos y explica sus límites sin prometer certeza.
           </p>
           <div className="actions">
             <Link className="button primary" to="/new">Analizar mi archivo</Link>
