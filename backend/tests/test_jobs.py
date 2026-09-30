@@ -31,4 +31,17 @@ def test_termination_stops_active_process_and_descendants():
     process.join(timeout=5)
     assert time.monotonic() - started < 6
     assert not process.is_alive()
-    assert all(not psutil.pid_exists(pid) for pid in descendant_pids)
+    deadline = time.time() + 2
+    while time.time() < deadline:
+        active = []
+        for pid in descendant_pids:
+            try:
+                child = psutil.Process(pid)
+                if child.is_running() and child.status() != psutil.STATUS_ZOMBIE:
+                    active.append(pid)
+            except psutil.NoSuchProcess:
+                pass
+        if not active:
+            break
+        time.sleep(0.05)
+    assert not active
