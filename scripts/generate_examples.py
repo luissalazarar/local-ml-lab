@@ -119,6 +119,28 @@ def exploration() -> pd.DataFrame:
     return pd.DataFrame(rows, columns=["Registro_ID", "Zona", "Monto", "Fecha", "Estado", "Constante"])
 
 
+def preparation_example(rng: np.random.Generator) -> pd.DataFrame:
+    rows = []
+    zones = [" Norte ", "Sur", "Centro", "Lima"]
+    for index in range(1, 49):
+        amount = 900 + index * 17.35
+        rows.append(
+            {
+                "Operación ID": f"OP-{index:04d}",
+                "Fecha venta": f"{(index % 27) + 1:02d}/{(index % 12) + 1:02d}/2026",
+                "Monto texto": f"{amount:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+                "Zona": zones[index % len(zones)],
+                "Visitas": int(rng.integers(1, 12)),
+                "Ventas": round(amount * 0.42 + rng.normal(0, 35), 2),
+            }
+        )
+    rows[6]["Fecha venta"] = "fecha pendiente"
+    rows[11]["Monto texto"] = "sin dato"
+    rows[18]["Zona"] = ""
+    rows.append(dict(rows[20]))
+    return pd.DataFrame(rows)
+
+
 def main() -> None:
     ROOT.mkdir(exist_ok=True)
     rng = np.random.default_rng(SEED)
@@ -126,6 +148,7 @@ def main() -> None:
     classification_data = classification(rng)
     forecast_data = forecast(rng)
     exploration_data = exploration()
+    preparation_data = preparation_example(rng)
 
     write_workbook(ROOT / "regression.xlsx", regression_data, [
         ("Objetivo", "Estimar un valor numérico con señal realista e imperfecta."),
@@ -149,6 +172,12 @@ def main() -> None:
         ("Objetivo", "Explorar calidad sin entrenar un modelo."),
         ("Qué contiene", "Faltantes, duplicado, ID, constante, categorías, números y fechas."),
         ("Qué aprenderás", "Cómo leer el perfil y decidir qué corregir en el archivo original."),
+    ])
+    write_workbook(ROOT / "preparation.xlsx", preparation_data, [
+        ("Objetivo", "Preparar un Excel típico antes de estimar Ventas."),
+        ("Qué contiene", "Fecha DMY como texto, monto con coma decimal, ID, espacios, faltantes y un duplicado exacto."),
+        ("Decisiones", "Confirma formatos, revisa antes/después y decide qué filas segregar."),
+        ("Privacidad", "Todos los registros son sintéticos."),
     ])
 
     regression_data.to_csv(ROOT / "regression.csv", index=False)

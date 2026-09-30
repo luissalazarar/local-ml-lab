@@ -15,6 +15,15 @@ from rq import Queue
 from rq.serializers import JSONSerializer
 from sqlalchemy import select
 
+from local_ml_lab.data.preparation import (
+    apply_recipe,
+    export_prepared_excel,
+    frame_hash,
+    quality_comparison,
+)
+from local_ml_lab.data.preparation import (
+    canonical_hash as preparation_hash,
+)
 from local_ml_lab.data.readers import inspect_file, normalize_columns, profile_frame, read_frame
 from local_ml_lab.db.models import Artifact, Dataset, DatasetVersion, Event, Job, Preflight, Run
 from local_ml_lab.db.session import SessionLocal
@@ -148,6 +157,8 @@ def process_job(job_id: str):
                 inspect_dataset(db, job)
             elif job.job_type == "prepare_dataset":
                 prepare_dataset(db, job)
+            elif job.job_type == "apply_preparation":
+                apply_preparation(db, job)
             elif job.job_type == "preflight":
                 preflight(db, job)
             elif job.job_type == "analyze":
@@ -241,6 +252,95 @@ def prepare_dataset(db, job):
     version.column_count = len(frame.columns)
     version.profile_ref = f"datasets/{version.id}/profile.json"
     version.canonical_ref = f"datasets/{version.id}/canonical.parquet"
+    version.version_kind = "original"
+    version.input_row_count = len(frame)
+    version.input_sha256 = frame_hash(frame)
+    version.output_sha256 = version.input_sha256
+    db.commit()
+
+
+def apply_preparation(db, job):
+    version = db.get(DatasetVersion, job.dataset_version_id)
+    parent = db.get(DatasetVersion, version.parent_version_id)
+    if not parent or parent.status != "ready":
+        raise ValueError("PARENT_DATASET_VERSION_NOT_READY")
+    dataset = db.get(Dataset, version.dataset_id)
+    source = pd.read_parquet(settings.data_root / parent.canonical_ref)
+    original_profile = json.loads(
+        (settings.data_root / parent.profile_ref).read_text(encoding="utf-8")
+    )
+    mapping = [
+        {
+            "column_id": item["column_id"],
+            "display_name": item["display_name"],
+            "source_name": item["source_name"],
+            "position": item["position"],
+        }
+        for item in original_profile["columns"]
+    ]
+    emit(db, job, "stage_started", "prepare", "Aplicando la preparación confirmada")
+    result = apply_recipe(source, version.recipe_json, source_extension=dataset.safe_extension)
+    out = settings.data_root / "datasets" / version.id
+    out.mkdir(parents=True, exist_ok=True)
+    result.frame.to_parquet(out / "canonical.parquet", index=False)
+    prepared_profile = profile_frame(
+        result.frame, mapping, type_overrides=result.type_overrides, roles=result.roles
+    )
+    quality = quality_comparison(original_profile, prepared_profile)
+    recipe = version.recipe_json
+    recipe_path = out / "recipe.json"
+    recipe_path.write_text(
+        json.dumps(recipe, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    quarantine_path = out / "quarantine.json"
+    quarantine_path.write_text(
+        json.dumps(result.quarantined, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    quality_path = out / "quality.json"
+    quality_path.write_text(json.dumps(quality, ensure_ascii=False, indent=2), encoding="utf-8")
+    profile_path = out / "profile.json"
+    profile_path.write_text(
+        json.dumps(prepared_profile, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    excel_path = out / "datos-preparados.xlsx"
+    export_prepared_excel(
+        excel_path,
+        result.frame,
+        mapping,
+        result.quarantined,
+        result.transformations,
+        quality,
+        result.roles,
+    )
+    output_hash = frame_hash(result.frame)
+    summary = {
+        "rows_input": len(source),
+        "rows_output": len(result.frame),
+        "rows_quarantined": len({row["row_id"] for row in result.quarantined}),
+        "transformations": result.transformations,
+        "preview": result.preview,
+        "quality": quality,
+        "roles": result.roles,
+        "type_overrides": result.type_overrides,
+        "source_extension": dataset.safe_extension,
+    }
+    version.status = "ready"
+    version.version_kind = "prepared"
+    version.row_count = len(result.frame)
+    version.column_count = len(result.frame.columns)
+    version.profile_ref = f"datasets/{version.id}/profile.json"
+    version.canonical_ref = f"datasets/{version.id}/canonical.parquet"
+    version.recipe_ref = f"datasets/{version.id}/recipe.json"
+    version.quarantine_ref = f"datasets/{version.id}/quarantine.json"
+    version.quality_ref = f"datasets/{version.id}/quality.json"
+    version.prepared_excel_ref = f"datasets/{version.id}/datos-preparados.xlsx"
+    version.input_sha256 = frame_hash(source)
+    version.recipe_sha256 = preparation_hash(recipe)
+    version.output_sha256 = output_hash
+    version.input_row_count = len(source)
+    version.quarantined_row_count = summary["rows_quarantined"]
+    version.transformation_count = len(result.transformations)
+    version.preparation_summary = summary
     db.commit()
 
 
@@ -258,9 +358,9 @@ def preflight(db, job):
     )
     if referenced - known:
         raise ValueError("UNKNOWN_COLUMN_IDS")
-    if (set(config.get("included_column_ids") or []) & set(config.get("excluded_column_ids") or [])) - {
-        config.get("target_column_id")
-    }:
+    if (
+        set(config.get("included_column_ids") or []) & set(config.get("excluded_column_ids") or [])
+    ) - {config.get("target_column_id")}:
         raise ValueError("COLUMN_INCLUDED_AND_EXCLUDED")
     if config["problem_type"] != "exploration" and not config.get("target_column_id"):
         raise ValueError("TARGET_REQUIRED")
@@ -271,6 +371,17 @@ def preflight(db, job):
             config["problem_type"], config.get("primary_metric")
         )
     frame = pd.read_parquet(settings.data_root / version.canonical_ref)
+    if version.version_kind == "prepared":
+        config["_preparation"] = {
+            "dataset_version_id": version.id,
+            "parent_version_id": version.parent_version_id,
+            "transformations": version.preparation_summary.get("transformations", []),
+            "rows_input": version.input_row_count,
+            "rows_analyzed": version.row_count,
+            "rows_quarantined": version.quarantined_row_count,
+            "recipe_sha256": version.recipe_sha256,
+            "output_sha256": version.output_sha256,
+        }
     summary = evaluate_preflight(frame, profile, config)
     config["_preflight"] = summary
     pf.resolved_config = config

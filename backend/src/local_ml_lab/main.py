@@ -14,6 +14,17 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from local_ml_lab import __version__, display_version
+from local_ml_lab.data.preparation import (
+    PreparationError,
+    apply_recipe,
+    frame_hash,
+    quality_comparison,
+    suggest_preparation,
+)
+from local_ml_lab.data.preparation import (
+    canonical_hash as preparation_hash,
+)
+from local_ml_lab.data.readers import profile_frame
 from local_ml_lab.db.migrate import migrate
 from local_ml_lab.db.models import Artifact, Dataset, DatasetVersion, Event, Job, Preflight, Run
 from local_ml_lab.db.session import get_db
@@ -21,6 +32,7 @@ from local_ml_lab.domain.contracts import (
     ContextRequest,
     ExportRequest,
     PreflightRequest,
+    PreparationRequest,
     RunRequest,
 )
 from local_ml_lab.examples import BY_ID, public_examples
@@ -184,7 +196,11 @@ def examples():
 
 
 def example_path(example_id: str):
-    legacy = {"dirty_data": "dirty_data.xlsx", "tabular": "tabular.parquet", "excel_reader_cases": "excel_reader_cases.xlsx"}
+    legacy = {
+        "dirty_data": "dirty_data.xlsx",
+        "tabular": "tabular.parquet",
+        "excel_reader_cases": "excel_reader_cases.xlsx",
+    }
     filename = BY_ID.get(example_id, {}).get("filename") or legacy.get(example_id)
     if not filename:
         raise HTTPException(404, "Ejemplo no encontrado")
@@ -289,6 +305,22 @@ def get_dataset(dataset_id: str, db: Session = Depends(get_db)):
     return serialize(obj)
 
 
+@app.get("/api/v1/datasets/{dataset_id}/versions")
+def list_dataset_versions(dataset_id: str, db: Session = Depends(get_db)):
+    if not db.get(Dataset, dataset_id):
+        raise HTTPException(404)
+    return {
+        "items": [
+            serialize(item)
+            for item in db.scalars(
+                select(DatasetVersion)
+                .where(DatasetVersion.dataset_id == dataset_id)
+                .order_by(DatasetVersion.created_at.desc())
+            ).all()
+        ]
+    }
+
+
 @app.post("/api/v1/datasets/{dataset_id}/versions", status_code=202)
 def create_version(dataset_id: str, options: dict | None = None, db: Session = Depends(get_db)):
     if not db.get(Dataset, dataset_id):
@@ -335,6 +367,205 @@ def preview(version_id: str, page: int = 1, db: Session = Depends(get_db)):
         "page": page,
         "total": len(frame),
     }
+
+
+@app.get("/api/v1/dataset-versions/{version_id}/preparation-suggestions")
+def preparation_suggestions(version_id: str, db: Session = Depends(get_db)):
+    import pandas as pd
+
+    version = db.get(DatasetVersion, version_id)
+    if not version or version.status != "ready" or not version.canonical_ref:
+        raise HTTPException(404)
+    dataset = db.get(Dataset, version.dataset_id)
+    frame = pd.read_parquet(settings.data_root / version.canonical_ref)
+    profile = json.loads((settings.data_root / version.profile_ref).read_text(encoding="utf-8"))
+    return suggest_preparation(frame, profile, dataset.safe_extension)
+
+
+@app.get("/api/v1/dataset-versions/{version_id}/temporal-check")
+def temporal_check(version_id: str, date_column_id: str, db: Session = Depends(get_db)):
+    import pandas as pd
+
+    version = db.get(DatasetVersion, version_id)
+    if not version or version.status != "ready" or not version.canonical_ref:
+        raise HTTPException(404)
+    frame = pd.read_parquet(settings.data_root / version.canonical_ref)
+    if date_column_id not in frame:
+        raise HTTPException(422, "Columna de fecha desconocida")
+    dates = pd.to_datetime(frame[date_column_id], errors="coerce")
+    valid = dates.dropna().sort_values()
+    periods = valid.dt.to_period("M")
+    unique_months = pd.PeriodIndex(periods.drop_duplicates(), freq="M")
+    expected = (
+        pd.period_range(unique_months.min(), unique_months.max(), freq="M")
+        if len(unique_months)
+        else pd.PeriodIndex([], freq="M")
+    )
+    duplicate_months = int(periods.duplicated(keep=False).sum())
+    daily = len(valid) > 1 and valid.diff().dropna().dt.days.median() <= 2
+    frequency = (
+        "diaria" if daily else "mensual" if duplicate_months == 0 else "varias filas por mes"
+    )
+    return {
+        "first_date": valid.iloc[0].isoformat() if len(valid) else None,
+        "last_date": valid.iloc[-1].isoformat() if len(valid) else None,
+        "frequency": frequency,
+        "observed_months": len(unique_months),
+        "missing_months": [str(item) for item in expected.difference(unique_months)],
+        "duplicate_month_rows": duplicate_months,
+        "invalid_or_missing_dates": int(dates.isna().sum()),
+        "monthly_aggregation_required": duplicate_months > 0,
+    }
+
+
+@app.post("/api/v1/dataset-versions/{version_id}/preparation-preview")
+def preparation_preview(version_id: str, body: PreparationRequest, db: Session = Depends(get_db)):
+    import pandas as pd
+
+    version = db.get(DatasetVersion, version_id)
+    if not version or version.status != "ready" or not version.canonical_ref:
+        raise HTTPException(404)
+    dataset = db.get(Dataset, version.dataset_id)
+    frame = pd.read_parquet(settings.data_root / version.canonical_ref)
+    profile = json.loads((settings.data_root / version.profile_ref).read_text(encoding="utf-8"))
+    _validate_recipe_compatibility(profile, body.recipe)
+    try:
+        result = apply_recipe(frame, body.recipe, source_extension=dataset.safe_extension)
+    except PreparationError as exc:
+        raise HTTPException(422, {"code": exc.code, "message": exc.detail}) from exc
+    mapping = [
+        {
+            "column_id": item["column_id"],
+            "display_name": item["display_name"],
+            "source_name": item["source_name"],
+            "position": item["position"],
+        }
+        for item in profile["columns"]
+    ]
+    prepared_profile = profile_frame(result.frame, mapping, result.type_overrides, result.roles)
+    return {
+        "recipe_sha256": preparation_hash(body.recipe.model_dump(mode="json", exclude_none=True)),
+        "input_sha256": frame_hash(frame),
+        "output_sha256": frame_hash(result.frame),
+        "rows_input": len(frame),
+        "rows_output": len(result.frame),
+        "rows_quarantined": len({item["row_id"] for item in result.quarantined}),
+        "quarantined": result.quarantined[:50],
+        "transformations": result.transformations,
+        "preview": result.preview,
+        "quality": quality_comparison(profile, prepared_profile),
+    }
+
+
+@app.post("/api/v1/dataset-versions/{version_id}/preparations", status_code=202)
+def create_prepared_version(
+    version_id: str, body: PreparationRequest, db: Session = Depends(get_db)
+):
+    parent = db.get(DatasetVersion, version_id)
+    if not parent or parent.status != "ready":
+        raise HTTPException(404)
+    profile = json.loads((settings.data_root / parent.profile_ref).read_text(encoding="utf-8"))
+    _validate_recipe_compatibility(profile, body.recipe)
+    recipe = body.recipe.model_dump(mode="json", exclude_none=True)
+    prepared = DatasetVersion(
+        dataset_id=parent.dataset_id,
+        parent_version_id=parent.id,
+        version_kind="prepared",
+        parser_options=parent.parser_options,
+        recipe_json=recipe,
+        recipe_sha256=preparation_hash(recipe),
+    )
+    db.add(prepared)
+    db.flush()
+    job = Job(job_type="apply_preparation", dataset_version_id=prepared.id, payload={})
+    db.add(job)
+    db.commit()
+    dispatch_or_503(db, job)
+    return {"dataset_version_id": prepared.id, "job_id": job.id}
+
+
+@app.get("/api/v1/dataset-versions/{version_id}/preparation")
+def preparation_details(version_id: str, db: Session = Depends(get_db)):
+    version = db.get(DatasetVersion, version_id)
+    if not version or version.version_kind != "prepared":
+        raise HTTPException(404)
+    data = serialize(version)
+    data["lineage"] = {
+        "dataset_id": version.dataset_id,
+        "parent_version_id": version.parent_version_id,
+        "input_sha256": version.input_sha256,
+        "recipe_sha256": version.recipe_sha256,
+        "output_sha256": version.output_sha256,
+        "rows_input": version.input_row_count,
+        "rows_output": version.row_count,
+        "rows_quarantined": version.quarantined_row_count,
+    }
+    if version.quarantine_ref:
+        data["quarantined"] = json.loads(
+            (settings.data_root / version.quarantine_ref).read_text(encoding="utf-8")
+        )
+    return data
+
+
+@app.get("/api/v1/dataset-versions/{version_id}/recipe/download")
+def download_preparation_recipe(version_id: str, db: Session = Depends(get_db)):
+    version = db.get(DatasetVersion, version_id)
+    if not version or not version.recipe_ref:
+        raise HTTPException(404)
+    return _version_file(version.recipe_ref, f"receta-{version.id[:8]}.json", "application/json")
+
+
+@app.get("/api/v1/dataset-versions/{version_id}/prepared-excel/download")
+def download_prepared_excel(version_id: str, db: Session = Depends(get_db)):
+    version = db.get(DatasetVersion, version_id)
+    if not version or not version.prepared_excel_ref:
+        raise HTTPException(404)
+    return _version_file(
+        version.prepared_excel_ref,
+        f"datos-preparados-{version.id[:8]}.xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@app.post("/api/v1/preparations/validate-recipe")
+def validate_preparation_recipe(body: PreparationRequest):
+    recipe = body.recipe.model_dump(mode="json", exclude_none=True)
+    return {
+        "valid": True,
+        "schema_version": recipe["schema_version"],
+        "sha256": preparation_hash(recipe),
+    }
+
+
+def _validate_recipe_compatibility(profile: dict, recipe) -> None:
+    names = {item["column_id"]: item["display_name"] for item in profile["columns"]}
+    unknown = set(recipe.columns) - set(names)
+    mismatched = {
+        column_id
+        for column_id, expected in recipe.expected_columns.items()
+        if names.get(column_id) != expected
+    }
+    if unknown or mismatched:
+        raise HTTPException(
+            422,
+            {
+                "code": "INCOMPATIBLE_RECIPE_COLUMNS",
+                "message": "La receta requiere columnas que no existen o cambiaron de nombre.",
+            },
+        )
+
+
+def _version_file(relative_path: str, filename: str, media_type: str):
+    root = settings.data_root.resolve()
+    path = (root / relative_path).resolve()
+    if root not in path.parents or path.is_symlink() or not path.is_file():
+        raise HTTPException(403)
+    return FileResponse(
+        path,
+        media_type=media_type,
+        filename=filename,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.post("/api/v1/preflights", status_code=202)
@@ -402,12 +633,14 @@ def create_run(body: RunRequest, db: Session = Depends(get_db)):
 
 @app.get("/api/v1/runs")
 def list_runs(db: Session = Depends(get_db)):
-    return {
-        "items": [
-            serialize(x)
-            for x in db.scalars(select(Run).order_by(Run.created_at.desc()).limit(200)).all()
-        ]
-    }
+    items = []
+    for run in db.scalars(select(Run).order_by(Run.created_at.desc()).limit(200)).all():
+        data = serialize(run)
+        version = db.get(DatasetVersion, run.dataset_version_id)
+        data["dataset_version_kind"] = version.version_kind if version else "original"
+        data["preparation_summary"] = version.preparation_summary if version else {}
+        items.append(data)
+    return {"items": items}
 
 
 @app.get("/api/v1/runs/{run_id}")
@@ -545,7 +778,9 @@ def export_run(run_id: str, body: ExportRequest, db: Session = Depends(get_db)):
             Job.status.in_(["queued", "running", "cancel_requested"]),
         )
     ).all()
-    existing = next((item for item in active_exports if item.payload.get("formats") == formats), None)
+    existing = next(
+        (item for item in active_exports if item.payload.get("formats") == formats), None
+    )
     if existing:
         return {"job_id": existing.id, "deduplicated": True}
     job = Job(job_type="render_export", run_id=run_id, payload={"formats": formats})

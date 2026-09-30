@@ -9,6 +9,7 @@ Este repositorio implementa una aplicación local-first y CPU-first para analiza
 - `queue`: Valkey transporta únicamente identificadores de jobs.
 - `/data`: volumen persistente compartido por API y worker; SQLite es la fuente de verdad.
 - `analysis_result.json`: snapshot analítico inmutable. Los reportes y explicaciones no lo reescriben.
+- La preparación es `Original → DatasetVersion preparada → Modelo`; guarda receta, cuarentena y hashes, y nunca modifica el original.
 - Forecasting V1 significa exclusivamente una serie mensual regular, sin huecos rellenados ni bandas inventadas.
 - La validación tabular aleatoria requiere registros independientes; rechaza o declara fuera de alcance grupos y usos temporales.
 
@@ -25,6 +26,7 @@ Este repositorio implementa una aplicación local-first y CPU-first para analiza
 9. No sustituir producción por mocks; los mocks pertenecen a tests.
 10. No borrar datos persistentes para resolver un fallo de arranque.
 11. `version.json` owns the visible `MAJOR.MINOR.BUILD` release. Su `semver` debe coincidir con backend, frontend y lockfile; los cambios solo documentales no publican versión.
+12. Preparar representaciones no es preprocesar el modelo: imputación, escalado, encoding y selección aprendida permanecen dentro de train/fold.
 
 ## Comandos
 
