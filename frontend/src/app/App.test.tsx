@@ -31,7 +31,7 @@ describe('contrato básico', () => {
     expect(brand.textContent).toBe('Laboratorio ML')
     expect(brand.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
     expect(author.contains(brand)).toBe(false)
-    expect(screen.getByText('v0.4.0000')).toBeTruthy()
+    expect(screen.getByText('v0.5.0000')).toBeTruthy()
   })
 
   it('marca la sección activa en la navegación principal', async () => {
@@ -60,7 +60,7 @@ describe('contrato básico', () => {
     const airQuality = screen.getByRole('link', { name: /Air Quality/ })
     expect(airQuality.getAttribute('target')).toBe('_blank')
     expect(airQuality.getAttribute('rel')).toBe('noopener noreferrer')
-    expect(screen.getByText(/no descarga datos automáticamente/i)).toBeTruthy()
-    expect(screen.getByText(/Muchos archivos Excel/)).toBeTruthy()
+    expect(screen.getByText(/no descarga ni envía datos/i)).toBeTruthy()
+    expect(screen.getByText(/Muchos CSV y XLSX/)).toBeTruthy()
   })
 })

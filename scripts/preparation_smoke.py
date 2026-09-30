@@ -121,7 +121,7 @@ with zipfile.ZipFile(io.BytesIO(xlsx)) as workbook:
     )
     for sheet in [
         b"01_Datos_Preparados",
-        b"02_Filas_Segregadas",
+        b"02_Filas_Apartadas",
         b"03_Transformaciones",
         b"04_Calidad",
         b"05_Diccionario",

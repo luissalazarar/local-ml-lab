@@ -2,6 +2,8 @@
 
 El backend usa pytest para lectores reales, métricas, folds, PFI, forecast, procesos cancelables y reportes. El frontend usa Vitest/Testing Library; el smoke de navegador se ejecuta contra el stack real. Los smokes Docker no usan OpenAI ni datasets privados.
 
+La pasada didáctica también cubre la ayuda contextual con teclado y Escape, el editor de una columna a la vez, lenguaje humano en preview, disponibilidad de filas para el resultado, agregación mensual contextual y el flujo Original → Preparado → Análisis → Entrenamiento. El QA visual obligatorio incluye 1440, 768 y 390 px, zoom 200 %, teclado y ausencia de scroll horizontal de página en Preparar.
+
 ```bash
 python3 scripts/check_version.py
 cd backend && uv run pytest

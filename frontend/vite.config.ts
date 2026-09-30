@@ -9,5 +9,5 @@ export default defineConfig({
   plugins:[react()],
   define:{__DISPLAY_VERSION__:JSON.stringify(release.display)},
   server:{proxy:{'/api':'http://localhost:8000'}},
-  test:{environment:'jsdom'},
+  test:{environment:'jsdom',include:['src/**/*.test.{ts,tsx}']},
 })

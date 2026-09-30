@@ -1,4 +1,4 @@
-# Laboratorio ML · v0.4.0000
+# Laboratorio ML · v0.5.0000
 
 ¿Tienes un Excel y quieres probar machine learning, pero no sabes por dónde empezar?
 
@@ -11,7 +11,7 @@ La identidad visual (símbolo, variantes y tamaños de uso), los tokens y el est
 ## Qué puedes hacer
 
 - Explorar Excel (.xlsx), CSV y Parquet con tipos primitivos. Excel es el camino principal.
-- Crear versiones preparadas auditables con tipos y usos confirmados, preview antes/después, filas segregadas y receta JSON reutilizable.
+- Crear versiones preparadas auditables con un editor guiado por columna, preview antes/después, filas apartadas y receta reutilizable.
 - Estimar un valor, predecir categorías o pronosticar una serie mensual regular.
 - Comparar referencias simples, modelos lineales y árboles.
 - Revisar calidad, exclusiones, métricas, candidatos fallidos y límites.
@@ -44,12 +44,12 @@ En Windows también puedes ejecutar `powershell -ExecutionPolicy Bypass -File sc
 
 1. Sube tu Excel o archivo de datos, o elige uno de los seis ejemplos sintéticos.
 2. Revisa cómo se interpretaron columnas, faltantes, IDs y duplicados.
-3. En **Preparar**, confirma tipo, uso y transformaciones; revisa el antes/después y crea una versión nueva sin tocar el original.
-4. Elige una pregunta y target; para forecasting, también fecha, horizonte y, solo si corresponde, agregación mensual.
+3. En **Preparar**, revisa una columna a la vez, confirma qué contiene, para qué sirve y cómo interpretarla; el original no cambia.
+4. Elige el resultado que quieres predecir; para pronóstico, también fecha, horizonte y, solo si corresponde, agregación mensual.
 5. Revisa el preflight y ejecuta.
 6. Compara confiabilidad, referencia, métricas, drivers y exportaciones.
 
-El flujo es **Original → Preparado → Modelo**. Preparar no significa que Laboratorio ML pueda saber si tus datos son correctos para tu negocio. Las transformaciones que aprenden de los datos continúan ocurriendo únicamente dentro del entrenamiento para evitar fugas.
+El flujo es **Original → Preparado → Análisis → Entrenamiento**. Preparar no significa que Laboratorio ML pueda saber si tus datos son correctos para tu negocio. Las transformaciones que aprenden de los datos continúan ocurriendo únicamente dentro del entrenamiento para evitar fugas.
 
 La confiabilidad resume la solidez de la evaluación; no es una probabilidad de acierto. Una referencia sencilla puede ganar. La importancia se calcula fuera del train de cada fold, pero esa validación también participa en la selección y no demuestra causalidad.
 
@@ -59,11 +59,11 @@ El núcleo funciona offline después de descargar imágenes y dependencias. Los 
 
 ## Exportaciones
 
-El Excel preparado contiene datos activos, filas segregadas, transformaciones, comparación de calidad y diccionario. Los reportes del análisis contienen resumen, preparación de datos, configuración, candidatos, métricas, predicciones, drivers, errores, advertencias, validación y diccionario. PDF contiene preparación, métricas, gráficos, drivers y límites. Todos nacen de snapshots inmutables.
+El Excel preparado contiene datos activos, filas apartadas, transformaciones, comparación de calidad y diccionario en lenguaje humano. Los reportes del análisis explican Original, Preparado, Análisis y Entrenamiento. Todos nacen de snapshots inmutables.
 
 ## Limitaciones y qué no hace
 
-V1 no ofrece inferencia por lotes, clustering, detección de anomalías por modelos, calibración formal, intervalos conformales, SHAP, tuning Optuna completo, envío directo a OpenAI, GPU, deep learning, multiusuario, despliegue público ni causalidad. Forecasting acepta una sola serie mensual regular sin covariables; exige calendario continuo, no rellena huecos y permite sumar o promediar duplicados mensuales. La validación tabular supone registros independientes: grupos, entidades repetidas y usos temporales no están soportados. Consulta [ROADMAP](docs/ROADMAP.md).
+V1 no combina tablas, reproduce Power Query, hace pivots, fuzzy dedupe ni elimina outliers automáticamente. Tampoco ofrece inferencia por lotes, clustering, calibración formal, intervalos conformales, SHAP, tuning Optuna completo, GPU, deep learning, multiusuario, despliegue público ni causalidad. Forecasting acepta una sola serie mensual regular sin covariables; exige calendario continuo, no rellena huecos y permite sumar o promediar observaciones del mes solo para ese análisis. La validación tabular supone registros independientes: grupos, entidades repetidas y usos temporales no están soportados. Consulta [ROADMAP](docs/ROADMAP.md).
 
 ## Probar sin usar tus propios datos
 
@@ -93,7 +93,7 @@ La sección [Guía](http://localhost:3000/guide#datasets) enlaza UCI, OpenML, la
 
 **¿Por qué ganó una referencia sencilla?** Porque los modelos probados no mejoraron claramente esa comparación bajo la evaluación usada.
 
-**¿Por qué no hay R² o ROC?** Algunas métricas no son válidas con target constante, una sola clase o soporte insuficiente; se muestran como no disponibles con motivo.
+**¿Por qué no hay R² o ROC?** Algunas métricas no son válidas con un resultado constante, una sola clase o soporte insuficiente; se muestran como no disponibles con motivo.
 
 **¿Por qué no aparecen bandas?** Requieren calibración separada y suficientes errores históricos por horizonte.
 

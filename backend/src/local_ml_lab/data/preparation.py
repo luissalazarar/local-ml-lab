@@ -328,7 +328,7 @@ def export_prepared_excel(
     for row, values in enumerate(frame.itertuples(index=False, name=None), 1):
         for col, value in enumerate(values):
             prepared.write(row, col, safe_excel_value(value))
-    _write_records(workbook.add_worksheet("02_Filas_Segregadas"), quarantined, header)
+    _write_records(workbook.add_worksheet("02_Filas_Apartadas"), quarantined, header)
     _write_records(workbook.add_worksheet("03_Transformaciones"), transformations, header)
     quality_rows = [
         {
@@ -341,28 +341,40 @@ def export_prepared_excel(
     _write_records(workbook.add_worksheet("04_Calidad"), quality_rows, header)
     dictionary = [
         {
-            "columna": names.get(column_id, column_id),
-            "tipo": str(frame[column_id].dtype),
-            "uso": roles.get(column_id, "variable"),
+            "Columna": names.get(column_id, column_id),
+            "Qué contiene": _human_dtype(frame[column_id]),
+            "Cómo se usa": {
+                "variable": "Variable que puede aportar información al modelo",
+                "identifier": "Identificador; no se usa para aprender patrones",
+                "ignore": "Ignorada en el modelado",
+            }.get(roles.get(column_id, "variable"), "Variable"),
         }
         for column_id in frame.columns
     ]
     dictionary.extend(
         [
             {
-                "columna": "Filas segregadas",
-                "tipo": "Concepto",
-                "uso": "Filas conservadas aparte que no participan en esta versión.",
+                "Columna": "Filas apartadas",
+                "Qué contiene": "Concepto",
+                "Cómo se usa": "Filas conservadas aparte que no participan en esta versión.",
             },
             {
-                "columna": "Preparación",
-                "tipo": "Concepto",
-                "uso": "Representaciones confirmadas antes del análisis; no incluye imputación, escalado ni encoding aprendido.",
+                "Columna": "Versión preparada",
+                "Qué contiene": "Concepto",
+                "Cómo se usa": "Representaciones confirmadas antes del análisis; no incluye imputación, escalado ni codificación aprendida.",
             },
         ]
     )
     _write_records(workbook.add_worksheet("05_Diccionario"), dictionary, header)
     workbook.close()
+
+
+def _human_dtype(series):
+    if pd.api.types.is_datetime64_any_dtype(series):
+        return "Fecha"
+    if pd.api.types.is_numeric_dtype(series):
+        return "Número"
+    return "Categoría o texto"
 
 
 def detect_numeric_pattern(series: pd.Series) -> dict:
