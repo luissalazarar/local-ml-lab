@@ -333,7 +333,8 @@ summary{cursor:pointer;color:var(--brand-blue);font-size:.8125rem;margin-top:4px
 .timeline li.active>span{border-color:var(--brand-petroleum);background:var(--brand-petroleum);color:#fff;box-shadow:0 0 0 4px rgba(5,77,97,.12)}
 .timeline li.done>span{border-color:#BFE3DF;background:var(--teal-light);color:var(--brand-turquoise-dark)}
 .timeline li small{display:block;color:var(--muted)}
-.liveAnalysis{display:grid;gap:22px}
+.liveAnalysis{display:grid;grid-template-columns:minmax(0,1fr);gap:22px}
+.liveAnalysis>*{min-width:0}
 .liveAnalysis .progressHero{margin-bottom:2px}
 .liveContext{display:grid;gap:20px}
 .liveFacts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0}
