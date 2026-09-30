@@ -1,0 +1,2 @@
+Las migraciones versionadas se incorporarán a partir de 0.2. La V1 crea el esquema bajo un bloqueo local idempotente.
+

@@ -1,0 +1,39 @@
+{
+  "name": "local-ml-lab-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b --pretty false",
+    "test": "vitest",
+    "lint": "eslint .",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "5.87.1",
+    "@tanstack/react-table": "8.21.3",
+    "echarts": "6.1.0",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "react-router-dom": "7.18.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.35.0",
+    "@playwright/test": "1.63.0",
+    "@testing-library/jest-dom": "6.8.0",
+    "@testing-library/react": "16.3.0",
+    "@types/react": "19.1.13",
+    "@types/react-dom": "19.1.9",
+    "@vitejs/plugin-react": "5.0.2",
+    "eslint": "9.35.0",
+    "eslint-plugin-react-hooks": "5.2.0",
+    "eslint-plugin-react-refresh": "0.4.20",
+    "jsdom": "26.1.0",
+    "typescript": "5.9.2",
+    "typescript-eslint": "8.43.0",
+    "vite": "7.3.6",
+    "vitest": "5.0.2"
+  }
+}
