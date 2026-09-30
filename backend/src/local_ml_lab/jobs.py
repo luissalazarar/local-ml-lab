@@ -122,6 +122,10 @@ def recover_pending_jobs() -> dict:
 
 
 def emit(db, job, event_type, stage, message, completed=0, total=None, payload=None):
+    if job.job_type == "analyze" and event_type == "completed":
+        # The generic job completion must not erase the analytical unit counters.
+        completed = job.progress.get("completed_units", completed)
+        total = job.progress.get("total_units", total)
     event_payload = {
         "event_version": "1.0",
         "event_type": event_type,
