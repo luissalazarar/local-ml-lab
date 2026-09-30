@@ -5,7 +5,43 @@
 - Nombre visible: **Laboratorio ML**.
 - Autoría: **Desarrollado por Luis Salazar**.
 - El nombre enlaza al inicio. La autoría enlaza de forma independiente al perfil público de LinkedIn y no carga widgets, trackers ni recursos de LinkedIn.
-- `LM` es un distintivo tipográfico de la aplicación, no un logotipo de SARE.
+- El símbolo es propio de Laboratorio ML. No deriva del logotipo de SARE ni de ningún otro logotipo existente, y sustituye al antiguo distintivo tipográfico `LM`.
+
+## Símbolo
+
+![Símbolo de Laboratorio ML en sus variantes y tamaños](screenshots/logo-tamanos.png)
+
+**Concepto: el patrón se comprueba en datos apartados.** Una hoja de datos cuadrada con una celda de la esquina separada. Tres puntos suben en diagonal dentro de la hoja y su continuación cae en la celda apartada: la idea central del producto, que un patrón encontrado en los datos solo vale si se comprueba en datos que no se usaron para encontrarlo. La pendiente es moderada a propósito: sugiere un hallazgo, no una promesa.
+
+Construcción, en una retícula de 48 × 48:
+
+- Hoja en azul petróleo `#054D61` y celda apartada en turquesa `#049990`. Solo dos colores, sin sombras ni degradados.
+- Esquinas exteriores de radio 8 que dibujan una silueta cuadrada única; esquinas del corte de radio 2 y separación de 3 unidades.
+- Los puntos son huecos recortados (`fill-rule="evenodd"`), por eso el símbolo funciona en un solo color y deja ver el fondo.
+- Todos los centros están sobre la diagonal `y = 48 − x`. No depende de ninguna tipografía.
+
+### Archivos
+
+Viven en `frontend/public/brand/`; se sirven desde `/brand/` y no llevan scripts, imágenes incrustadas, fuentes ni recursos externos.
+
+| Archivo | Uso |
+| --- | --- |
+| `laboratorio-ml-simbolo.svg` | Principal, a dos colores, sobre fondos claros. |
+| `laboratorio-ml-simbolo-mono.svg` | Un solo color (azul petróleo) para impresión o sellos. |
+| `laboratorio-ml-simbolo-inverso.svg` | Blanco, sobre azul petróleo u otros fondos oscuros. |
+| `laboratorio-ml-simbolo-reducido.svg` | Versión simplificada para 24 px o menos: dos puntos más grandes y separaciones más anchas. |
+| `laboratorio-ml-simbolo-1024.png` | PNG transparente de 1024 px para reutilizarlo donde no se admita SVG. |
+| `frontend/public/favicon.svg` | Geometría reducida. Con tema oscuro del navegador, la hoja pasa a `#EDEDED`. |
+
+### Tamaños y uso
+
+- 32 px o más: símbolo principal. En el encabezado mide 40 px, junto al texto «Laboratorio ML».
+- 24 px o menos: versión reducida. El componente `BrandSymbol` (`frontend/src/brand/`) la elige solo con `size <= 24`.
+- La versión a color no se usa sobre azul petróleo ni sobre fondos oscuros: ahí va la inversa.
+- Alrededor del símbolo se deja un margen libre de al menos 1/4 de su tamaño. No se rota, no se deforma ni se recolorea con otros colores de la paleta.
+- Junto al nombre visible, el SVG es decorativo (`aria-hidden`) para que el lector de pantalla no anuncie dos veces «Laboratorio ML». Si aparece solo, `label` le da `role="img"` y nombre accesible.
+- La geometría del componente y la de los SVG publicados es la misma; `BrandSymbol.test.tsx` falla si se separan.
+- Los reportes PDF y Excel no incluían el distintivo `LM` y siguen identificándose con texto.
 
 ## Paleta original de referencia
 
