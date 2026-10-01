@@ -4,7 +4,7 @@ El backend usa pytest para lectores reales, métricas, splits congelados, polít
 
 La pasada didáctica también cubre la ayuda contextual con teclado y Escape, el editor de una columna a la vez, lenguaje humano en preview, disponibilidad de filas para el resultado, agregación mensual contextual y el flujo Original → Preparado → Análisis → Entrenamiento. El QA visual obligatorio incluye 1440, 768 y 390 px, zoom 200 %, teclado y ausencia de scroll horizontal de página en Preparar.
 
-La aceptación v0.6 usa casos sintéticos fijos: constante, tendencia, estacional, tendencia estacional, ruido, cambio de nivel, ceros/negativos e historia corta; además relación tabular lineal/no lineal, desbalance, multiclase, target constante, singleton, selección vacía, duplicados y categorías nuevas. No se cambian seeds para obtener un ganador atractivo. También se comprueban gates controlados, leakage por prefijo/train, alineación, futuro exacto, ranking sin parciales, cancelación, recuperación y estado en vivo.
+La aceptación v0.7 usa casos sintéticos fijos: constante, tendencia, estacional, tendencia estacional, ruido, cambio de nivel, ceros/negativos e historia corta con horizontes 1/3/6/12/24; además relación tabular lineal/no lineal, ruido, pocos datos, desbalance, multiclase, target constante, singleton, selección vacía, duplicados, missing target y categorías nuevas. No se cambian seeds para obtener un ganador atractivo. También se comprueban gates minimize/maximize, confirmación pass/fail/not-run, holdout sin reselección, leakage por prefijo/train, preview atómico, replay, ranking sin parciales, cancelación, recuperación y estado en vivo.
 
 ```bash
 python3 scripts/check_version.py

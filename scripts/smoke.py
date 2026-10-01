@@ -107,6 +107,9 @@ def analyze_example(example, problem, target_name, *, date_name=None, primary="m
     unit_events = [event for event in live["last_events"] if event["event_type"] == "unit_completed"]
     frozen = next(event for event in live["last_events"] if event["event_type"] == "snapshot_frozen")
     assert unit_events and live["active_preview"]
+    assert len(live["active_preview"]["predictions"]) <= 500
+    replay = call(f"/runs/{run['run_id']}/replay?limit=200")
+    assert replay["terminal"] is True and replay["items"]
     assert min(event["seq"] for event in unit_events) < frozen["seq"]
     incremental = call(f"/jobs/{run['job_id']}/events?after=0&limit=200")["items"]
     assert 0 < len(incremental) <= 200
@@ -150,7 +153,7 @@ payloads = {
 }
 with zipfile.ZipFile(io.BytesIO(payloads["xlsx"])) as workbook:
     worksheets = [name for name in workbook.namelist() if name.startswith("xl/worksheets/sheet")]
-    assert len(worksheets) == 14
+    assert len(worksheets) == 18
 assert payloads["pdf"].startswith(b"%PDF") and len(payloads["pdf"]) > 2_000
 
 context = call(

@@ -112,6 +112,10 @@ def create_excel(result: dict, path: Path) -> None:
         "11_Diccionario",
         "12_Seleccion_Modelo",
         "13_Limites",
+        "14_Confirmacion",
+        "15_Prueba_Reservada",
+        "16_Metricas_Clase",
+        "17_Pronostico_Horizonte",
     ]
     for name in sheets:
         worksheet = workbook.add_worksheet(name)
@@ -176,6 +180,26 @@ def create_excel(result: dict, path: Path) -> None:
     write_table(
         workbook.get_worksheet_by_name("13_Limites"),
         [{"limite": value} for value in result.get("limitations", [])],
+        header,
+    )
+    write_table(
+        workbook.get_worksheet_by_name("14_Confirmacion"),
+        [result.get("confirmation", {})],
+        header,
+    )
+    write_table(
+        workbook.get_worksheet_by_name("15_Prueba_Reservada"),
+        [result.get("final_test", {})] if result.get("final_test") else [],
+        header,
+    )
+    write_table(
+        workbook.get_worksheet_by_name("16_Metricas_Clase"),
+        result.get("diagnostics", {}).get("per_class", []),
+        header,
+    )
+    write_table(
+        workbook.get_worksheet_by_name("17_Pronostico_Horizonte"),
+        result.get("forecast", {}).get("horizon_diagnostics", []),
         header,
     )
     workbook.close()
@@ -288,7 +312,7 @@ def candidate_error_rows(candidates):
 
 
 def write_table(worksheet, rows, header):
-    if not rows:
+    if not rows or not any(row for row in rows):
         worksheet.write(0, 0, "No disponible: esta sección no aplica al análisis.")
         return
     keys = sorted({key for row in rows for key in row})
@@ -378,6 +402,12 @@ def create_pdf(result: dict, path: Path) -> None:
             styles["BodyText"],
         ),
         Spacer(1, 4 * mm),
+        Paragraph("Comprobación adicional", styles["Heading2"]),
+        Paragraph(paragraph_text(confirmation_text(result)), styles["BodyText"]),
+        Spacer(1, 4 * mm),
+        Paragraph("Prueba reservada", styles["Heading2"]),
+        Paragraph(paragraph_text(holdout_text(result)), styles["BodyText"]),
+        Spacer(1, 4 * mm),
         Paragraph("Qué significan los límites", styles["Heading2"]),
         Paragraph(
             "Acotan qué puede concluirse. Los umbrales de selección son decisiones del producto y no pruebas de significancia estadística.",
@@ -400,6 +430,22 @@ def create_pdf(result: dict, path: Path) -> None:
         for metric in result.get("evaluation_metrics", [])
     ]
     story += [Paragraph("Métricas", styles["Heading2"]), styled_table(metrics)]
+    horizon_rows = result.get("forecast", {}).get("horizon_diagnostics", [])
+    if horizon_rows:
+        rows = [["Mes", "MAE modelo", "MAE referencia", "Diferencia"]] + [
+            [
+                f"+{item['horizon']}",
+                f"{item['selected_mae']:.4g}",
+                f"{item['baseline_mae']:.4g}",
+                f"{item['mae_difference']:.4g}",
+            ]
+            for item in horizon_rows
+        ]
+        story += [
+            Spacer(1, 4 * mm),
+            Paragraph("Error histórico por distancia al futuro", styles["Heading2"]),
+            styled_table(rows),
+        ]
     chart = result_chart(result)
     if chart:
         story += [Spacer(1, 6 * mm), Paragraph("Resultado visual", styles["Heading2"]), chart]
@@ -444,6 +490,25 @@ def preparation_summary_text(preparation):
         "Original: archivo sin cambios. Preparado: representaciones confirmadas. "
         "Análisis: decisiones ligadas al objetivo. Entrenamiento: aprendizaje limitado a sus datos de entrenamiento."
     )
+
+
+def confirmation_text(result):
+    confirmation = result.get("confirmation", {})
+    status = confirmation.get("status", "not_run")
+    if status == "confirmed":
+        return "La mejora volvió a aparecer con suficiente consistencia en una segunda separación reproducible."
+    if status == "not_confirmed":
+        return "La mejora no volvió a aparecer con suficiente consistencia; se conservó la referencia."
+    return "No se ejecutó porque no aplicaba o no había soporte suficiente; no se redujeron los requisitos."
+
+
+def holdout_text(result):
+    final_test = result.get("final_test")
+    if not final_test:
+        return "No se reservó una prueba final porque separar más datos habría dejado demasiado poco soporte."
+    if final_test.get("selection_improvement_repeated"):
+        return "La mejora volvió a aparecer en datos que no participaron en elegir el modelo."
+    return "La mejora observada durante selección no se repitió en la prueba reservada; el ganador no se cambió después de verla."
 
 
 def styled_table(rows):

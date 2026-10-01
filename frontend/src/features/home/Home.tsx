@@ -28,7 +28,7 @@ export function Home() {
             </button>
           </div>
         </div>
-        <aside className="trustCard">
+        <div className="trustCard">
           <BrandSymbol className="trustSymbol" tone="inverse" size={48} />
           <strong>Tus datos se procesan en este equipo</strong>
           <p>
@@ -39,7 +39,7 @@ export function Home() {
             <div><dt>5</dt><dd>formas de analizar</dd></div>
             <div><dt>3</dt><dd>formatos de archivo</dd></div>
           </dl>
-        </aside>
+        </div>
       </section>
       <section className="capabilities" aria-labelledby="cap">
         <div className="sectionIntro">

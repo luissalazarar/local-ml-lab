@@ -27,7 +27,7 @@ def test_real_regression_pipeline_and_baseline():
     assert result["analytical_outcome"] == "completed"
     assert any(c["model_id"] == "dummy_median" for c in result["candidates"])
     assert all(c["status"] in {"completed", "failed"} for c in result["candidates"])
-    assert result["selection_decision"]["policy_version"] == "selection-policy-2.0"
+    assert result["selection_decision"]["policy_version"] == "selection-policy-2.1"
     assert result["plan_sha256"] == result["analysis_plan"]["plan_sha256"]
 
 

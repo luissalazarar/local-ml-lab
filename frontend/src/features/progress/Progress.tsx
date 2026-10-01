@@ -1,20 +1,20 @@
-import { useEffect, useMemo, useState } from 'react'
+import { memo, useEffect, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { api, getLiveRun, LiveCandidate, LivePrediction, LiveRun } from '../../api/client'
-import { humanLabel, progressMessage } from '../../presentation/labels'
+import { api, getLivePreview, getLiveRun, getRunReplay, LiveCandidate, LivePrediction, LivePreview, LiveRun, ReplayEvent } from '../../api/client'
+import { ConceptHelp } from '../../education/ConceptHelp'
+import { useGuidedMode } from '../../education/useGuidedMode'
+import { humanLabel, metricLabel, progressMessage } from '../../presentation/labels'
 
 const terminal = new Set(['succeeded','succeeded_with_warnings','failed','cancelled','interrupted'])
 const fmt = new Intl.NumberFormat('es-PE',{maximumFractionDigits:4})
 
 export function Progress(){
-  const {runId=''}=useParams()
-  const [params]=useSearchParams()
-  const jobId=params.get('job')??''
-  const [live,setLive]=useState<LiveRun|null>(null)
-  const [elapsed,setElapsed]=useState(0)
-  const [error,setError]=useState('')
-  const [follow,setFollow]=useState(true)
-  const [inspected,setInspected]=useState<string|null>(null)
+  const {runId=''}=useParams(), [params]=useSearchParams(), jobId=params.get('job')??''
+  const {guided,toggle}=useGuidedMode()
+  const [live,setLive]=useState<LiveRun|null>(null), [elapsed,setElapsed]=useState(0), [error,setError]=useState('')
+  const [follow,setFollow]=useState(true), [inspected,setInspected]=useState<string|null>(null), [preview,setPreview]=useState<LivePreview|null>(null)
+  const [visualTab,setVisualTab]=useState<'main'|'errors'>('main'), [origin,setOrigin]=useState('')
+  const [replay,setReplay]=useState<ReplayEvent[]>([]), [replayOpen,setReplayOpen]=useState(false), [replayIndex,setReplayIndex]=useState(0), [playing,setPlaying]=useState(false), [speed,setSpeed]=useState(1)
 
   useEffect(()=>{
     let stopped=false, timer:number|undefined, inFlight=false, failures=0
@@ -28,16 +28,8 @@ export function Progress(){
           if(follow&&next.active_candidate_id)setInspected(next.active_candidate_id)
           if(terminal.has(next.status)){stopped=true;return}
         }
-      }catch{
-        failures=Math.min(failures+1,3)
-        setError('Perdimos la conexión. El análisis puede seguir ejecutándose; intentaremos recuperar la vista.')
-      }finally{
-        inFlight=false
-        if(!stopped){
-          const backoff=failures?[2000,4000,8000][failures-1]:(document.hidden?5000:1000)
-          timer=window.setTimeout(poll,backoff)
-        }
-      }
+      }catch{failures=Math.min(failures+1,3);setError('Perdimos la conexión. El análisis puede seguir ejecutándose; intentaremos recuperar la vista.')}
+      finally{inFlight=false;if(!stopped){const delay=failures?[2000,4000,8000][failures-1]:(document.hidden?5000:1000);timer=window.setTimeout(poll,delay)}}
     }
     void poll()
     const visibility=()=>{if(!stopped&&!inFlight){if(timer)window.clearTimeout(timer);void poll()}}
@@ -45,99 +37,63 @@ export function Progress(){
     return()=>{stopped=true;if(timer)window.clearTimeout(timer);document.removeEventListener('visibilitychange',visibility)}
   },[follow,runId])
 
+  useEffect(()=>{const tick=()=>setElapsed(live?.started_at?Math.max(0,Math.floor((Date.now()-new Date(live.started_at).getTime())/1000)):0);tick();const timer=window.setInterval(tick,1000);return()=>window.clearInterval(timer)},[live?.started_at])
+  const selectedCandidateId=inspected??live?.active_candidate_id??null
+  const activePreview=live?.active_preview
   useEffect(()=>{
-    const tick=()=>setElapsed(live?.started_at?Math.max(0,Math.floor((Date.now()-new Date(live.started_at).getTime())/1000)):0)
-    tick();const timer=window.setInterval(tick,1000);return()=>window.clearInterval(timer)
-  },[live?.started_at])
+    if(!selectedCandidateId)return
+    if(activePreview?.candidate_id===selectedCandidateId&&(!origin||activePreview.unit_id===origin)){setPreview(activePreview);return}
+    void getLivePreview(runId,selectedCandidateId,origin||undefined).then(setPreview).catch(()=>setPreview(null))
+  },[activePreview,origin,runId,selectedCandidateId])
+  useEffect(()=>{if(!playing||!replay.length)return;const timer=window.setInterval(()=>setReplayIndex(value=>{if(value>=replay.length-1){setPlaying(false);return value}return value+1}),800/speed);return()=>window.clearInterval(timer)},[playing,replay.length,speed])
 
-  const activeCandidate=useMemo(()=>live?.candidates.find(item=>item.candidate_id===(inspected??live.active_candidate_id)),[inspected,live])
-  const currentEvent=live?.last_events.at(-1)
-  const finished=Boolean(live&&terminal.has(live.status))
+  const currentEvent=live?.last_events.at(-1), finished=Boolean(live&&terminal.has(live.status))
+  const activeCandidate=live?.candidates.find(item=>item.candidate_id===selectedCandidateId)
+  const baselineId=live?.plan_summary?.baseline_candidate_id??live?.plan_summary?.baseline_candidate_ids?.[0]
+  const baseline=live?.candidates.find(item=>item.candidate_id===baselineId), best=live?.ranking[0]
+  const decision=live?.selection_decision??live?.primary_selection_decision
+  const selectedDecision=decision?.candidate_decisions?.find(item=>item.candidate_id===decision.provisional_selected_candidate_id||item.candidate_id===decision.selected_candidate_id)
+  const originIds=Object.keys(live?.preview_index?.[selectedCandidateId??'']??{})
   async function cancel(){await api('/jobs/'+jobId+'/cancel',{method:'POST'});setError('Cancelación solicitada. El supervisor detendrá el proceso activo y sus descendientes.')}
-  function inspect(candidate:LiveCandidate){setInspected(candidate.candidate_id);setFollow(false)}
-  function resumeFollow(){setFollow(true);setInspected(live?.active_candidate_id??null)}
+  function inspect(candidate:LiveCandidate){setInspected(candidate.candidate_id);setFollow(false);setOrigin('')}
+  async function openReplay(){const data=await getRunReplay(runId);setReplay(data.items);setReplayIndex(Math.max(0,data.items.length-1));setReplayOpen(true)}
 
   return <main className="progressPage liveAnalysis">
-    <section className="progressHero">
-      <span className="eyebrow">{finished?'EVALUACIÓN TERMINADA':'ANÁLISIS EN CURSO'}</span>
-      <h1>Así estamos evaluando tu data</h1>
-      <p>{finished?'La evidencia quedó congelada. Puedes revisar este recorrido o abrir el resultado completo.':'Resultados provisionales. La selección puede cambiar mientras completamos evaluaciones reales.'}</p>
-    </section>
+    <section className="progressHero"><span className="eyebrow">{finished?'EVALUACIÓN TERMINADA':'ANÁLISIS EN CURSO'}</span><h1>Así estamos evaluando tu data</h1><p>{finished?'La evidencia quedó congelada. Puedes revisar el recorrido sin volver a entrenar.':'Cada cambio visible corresponde a una evaluación terminada y persistida.'}</p><button className="button secondary" onClick={toggle}>{guided?'Ver detalle técnico':'Volver al modo guiado'}</button></section>
     {error&&<div className="alert warning" role="status"><strong>Conexión</strong><span>{error}</span></div>}
-
-    <section className="panel liveContext" aria-labelledby="live-context-title">
-      <div><span className="sectionQuestion">Contexto y progreso</span><h2 id="live-context-title">Qué estamos comprobando</h2></div>
-      <dl className="liveFacts">
-        <div><dt>Objetivo</dt><dd>{humanLabel(live?.plan_summary?.problem_type??'preparando')}</dd></div>
-        <div><dt>Población</dt><dd>{live?.plan_summary?.population_count?.toLocaleString('es-PE')??'Todavía no calculada'} {live?.plan_summary?.problem_type==='forecasting'?'meses':'filas'}</dd></div>
-        <div><dt>Métrica</dt><dd>{humanLabel(live?.plan_summary?.primary_metric??'Todavía no calculada')}</dd></div>
-        <div><dt>Validación</dt><dd>{humanLabel(live?.plan_summary?.validation_strategy??'Diseñando')}</dd></div>
-      </dl>
-      <div className="liveLine"><span className={finished?'statusDot':'pulse'}/><div><strong>{progressMessage(currentEvent?.stage,currentEvent?.message_code)}</strong><small>{live?.active_candidate_id?'Candidato activo: '+candidateName(live.candidates,live.active_candidate_id):'Primero congelamos el plan; después todos los candidatos usan sus mismas particiones.'}</small></div></div>
+    <section className="panel liveContext" aria-labelledby="live-context-title"><div><span className="sectionQuestion">¿Qué estamos comprobando?</span><h2 id="live-context-title">Contexto del análisis</h2></div><dl className="liveFacts">
+      <Fact label="Objetivo" value={humanLabel(live?.plan_summary?.problem_type??'preparando')}/><Fact label="Resultado a predecir" value={live?.plan_summary?.target_display_name??'Todavía no calculado'}/><Fact label="Métrica" value={metricLabel(live?.plan_summary?.primary_metric)}/><Fact label="Datos disponibles" value={live?.plan_summary?.population_count!=null?`${live.plan_summary.population_count.toLocaleString('es-PE')} ${live.plan_summary.problem_type==='forecasting'?'meses':'filas'}`:'Todavía no calculado'}/><Fact label="Validación" value={humanLabel(live?.plan_summary?.validation_strategy??'Diseñando')}/><Fact label="Candidatos previstos" value={live?.plan_summary?.eligible_candidate_count?.toString()??'Todavía no calculado'}/>{!guided&&<><Fact label="ID del resultado" value={live?.plan_summary?.target_column_id??'—'}/><Fact label="Unidad activa" value={live?.active_unit_id??'—'}/><Fact label="Versión de eventos" value={live?.event_version??'—'}/></>}
+    </dl><div className="liveLine"><span className={finished?'statusDot':'pulse'}/><div><strong>{progressMessage(currentEvent?.stage,currentEvent?.message_code)}</strong><small>{live?.active_candidate_id?`Estamos probando ${candidateName(live.candidates,live.active_candidate_id)}${live.active_unit_id&&!guided?` en ${live.active_unit_id}`:''}.`:'Primero congelamos el plan; luego todos compiten con evidencia comparable.'}</small></div></div></section>
+    <section className="liveKpis" aria-label="Indicadores del análisis"><Kpi label="Evaluaciones" value={live?.counters.planned_evaluations!=null?`${live.counters.completed_evaluations} / ${live.counters.planned_evaluations}`:'Todavía no calculado'} note="Conteo de pruebas terminadas, no tiempo restante."/><Kpi label="Candidatos" value={live?`${live.counters.completed_candidates} / ${live.counters.eligible_candidates}`:'Todavía no calculado'}/><Kpi label="Referencia" value={baseline?.primary_value==null?'Todavía no calculado':`${metricLabel(baseline.primary_metric_id)} ${fmt.format(baseline.primary_value)}`} note={baseline?.display_name}/><Kpi label="Mejor score completo hasta ahora" value={best?.primary_value==null?'Todavía no calculado':`${best.display_name} · ${metricLabel(best.primary_metric_id)} ${fmt.format(best.primary_value)}`} note={best?'Provisional · solo candidatos completos':''}/><Kpi label="Mejora observada" value={selectedDecision?.joint_improvement==null?'Todavía sin mejora clara':`${fmt.format(selectedDecision.joint_improvement*100)}% ${live?.plan_summary?.metric_direction==='min'?'menos error':'de mejora'}`} note={`Tiempo transcurrido ${clock(elapsed)}`}/></section>
+    <section className="panel liveComparison"><span className="sectionQuestion">¿Cómo va la comparación?</span><div className="panelTitle"><div><h2>Candidatos con evidencia completa</h2><p>{live?.plan_summary?.metric_direction==='max'?'Más alto es mejor.':'Más bajo es mejor.'} La referencia aparece primero; un candidato activo no entra al ranking.</p></div><ConceptHelp concept="candidate"/></div><CandidateBars candidates={live?.candidates??[]} baselineId={baselineId} direction={live?.plan_summary?.metric_direction} onInspect={inspect} guided={guided}/></section>
+    <section className="panel activeEvaluation"><div className="panelTitle"><div><span className="sectionQuestion">¿Dónde acierta y dónde falla?</span><h2>{activeCandidate?.display_name??'Evidencia disponible'}</h2><p>{preview?'Datos fuera del entrenamiento, guardados al terminar una prueba real.':'Esperando que termine una evaluación real.'}</p></div><div className="followControls">{!follow&&<button className="button secondary" onClick={()=>{setFollow(true);setInspected(live?.active_candidate_id??null);setOrigin('')}}>Seguir la ejecución</button>}<span className="tag">{follow?'Siguiendo candidato activo':'Inspección manual'}</span></div></div>
+      {live?.plan_summary?.problem_type==='forecasting'&&originIds.length>1&&<label>Prueba histórica<select value={origin||preview?.unit_id||''} onChange={event=>setOrigin(event.target.value)}>{originIds.map((id,index)=><option value={id} key={id}>{guided?`Prueba histórica ${index+1}`:id}</option>)}</select></label>}
+      {live?.plan_summary?.problem_type==='regression'&&<nav className="tabs" aria-label="Gráficos de regresión"><button className={visualTab==='main'?'active':''} onClick={()=>setVisualTab('main')}>Real vs predicho</button><button className={visualTab==='errors'?'active':''} onClick={()=>setVisualTab('errors')}>Errores</button></nav>}
+      <LiveVisual problem={live?.plan_summary?.problem_type} preview={preview} tab={visualTab} guided={guided}/>
     </section>
-
-    <section className="liveKpis" aria-label="Indicadores del análisis">
-      <Kpi label="Candidatos completados" value={live?live.counters.completed_candidates+' / '+live.counters.eligible_candidates:'Todavía no calculada'} />
-      <Kpi label="Evaluaciones completadas" value={live?.counters.planned_evaluations!=null?live.counters.completed_evaluations+' / '+live.counters.planned_evaluations:'Todavía no calculada'} note="Conteo de evaluaciones, no una estimación de tiempo." />
-      <Kpi label="Mejor candidato completo" value={live?.ranking[0]?.display_name??'Todavía no calculada'} note={formatScore(live?.ranking[0])} />
-      <Kpi label="Tiempo y actividad" value={clock(elapsed)} note={live?.heartbeat_at?'Última actividad: '+new Date(live.heartbeat_at).toLocaleTimeString('es-PE'):'Esperando primera actividad'} />
-    </section>
-
-    <section className="panel activeEvaluation">
-      <div className="panelTitle"><div><span className="sectionQuestion">Evidencia real disponible</span><h2>{activeCandidate?.display_name??'Candidato activo'}</h2><p>{live?.active_preview?'La visualización cambió al terminar una unidad real; no añadimos ajustes para animarla.':'Este ajuste continúa ejecutándose; actualizaremos sus métricas al terminar.'}</p></div><div className="followControls">{!follow&&<button className="button secondary" onClick={resumeFollow}>Volver a seguir la ejecución</button>}<span className="tag">{follow?'Siguiendo candidato activo':'Inspección manual'}</span></div></div>
-      <LiveVisual problem={live?.plan_summary?.problem_type} preview={follow||inspected===live?.active_preview?.candidate_id?live?.active_preview:null}/>
-    </section>
-
-    <section className="panel liveComparison">
-      <span className="sectionQuestion">Comparación y explicación</span>
-      <h2>Qué está haciendo el sistema</h2>
-      <p>{teachingMessage(currentEvent?.event_type,live?.plan_summary?.problem_type)}</p>
-      <div className="tableWrap"><table><thead><tr><th>Candidato</th><th>Estado</th><th>Evaluaciones</th><th className="numeric">Métrica completa</th><th>Revisar</th></tr></thead><tbody>{(live?.candidates??[]).map(candidate=><tr key={candidate.candidate_id}><td><strong>{candidate.display_name??candidate.candidate_id}</strong><small>{candidateReason(candidate)}</small></td><td><span className={'tag '+candidate.status}>{humanLabel(candidate.status)}</span></td><td>{candidate.completed_unit_count??0} / {candidate.planned_unit_count??live?.plan_summary?.evaluation_unit_count??'—'}</td><td className="numeric">{candidate.primary_value==null?'Todavía no calculada':fmt.format(candidate.primary_value)}</td><td><button className="button secondary" onClick={()=>inspect(candidate)}>Inspeccionar</button></td></tr>)}</tbody></table></div>
-      {live?.selection_decision&&<div className="alert info"><strong>Selección congelada</strong><span>{live.selection_decision.reason??humanLabel(live.selection_decision.reason_code??'')}</span></div>}
-    </section>
-
-    <div className="footerActions">
-      {live?.result_available&&<Link className="button primary" to={'/runs/'+runId}>Ver resultado completo</Link>}
-      <Link className="button secondary" to="/history">{finished?'Revisar historial':'El análisis sigue aunque salgas'}</Link>
-      {!finished&&<button className="button danger" onClick={cancel} disabled={!live||!['queued','running','cancel_requested'].includes(live.status)}>Cancelar análisis</button>}
-    </div>
+    <Trajectory candidate={activeCandidate} decision={decision} metric={live?.plan_summary?.primary_metric}/><SelectionGate decision={decision}/><Learning live={live}/><ConfirmationAndHoldout live={live}/>
+    {replayOpen&&<ReplayPanel events={replay} index={replayIndex} playing={playing} speed={speed} setIndex={setReplayIndex} setPlaying={setPlaying} setSpeed={setSpeed}/>}
+    <div className="footerActions">{live?.result_available&&<Link className="button primary" to={`/runs/${runId}`}>Ver resultado completo</Link>}{finished&&<button className="button secondary" onClick={()=>void openReplay()}>Revisar cómo se obtuvo</button>}<Link className="button secondary" to="/history">{finished?'Revisar historial':'El análisis sigue aunque salgas'}</Link>{!finished&&<button className="button danger" onClick={()=>void cancel()} disabled={!live||!['queued','running','cancel_requested'].includes(live.status)}>Cancelar análisis</button>}</div>
   </main>
 }
 
+function Fact({label,value}:{label:string;value:string}){return <div><dt>{label}</dt><dd>{value}</dd></div>}
 function Kpi({label,value,note}:{label:string;value:string;note?:string}){return <article><span>{label}</span><strong>{value}</strong>{note&&<small>{note}</small>}</article>}
+function CandidateBars({candidates,baselineId,direction,onInspect,guided}:{candidates:LiveCandidate[];baselineId?:string;direction?:string;onInspect:(candidate:LiveCandidate)=>void;guided:boolean}){const complete=candidates.filter(item=>item.status==='completed'&&item.primary_value!=null),pending=candidates.filter(item=>!complete.includes(item)),ordered=[...complete.filter(item=>item.candidate_id===baselineId),...complete.filter(item=>item.candidate_id!==baselineId).sort((a,b)=>(direction==='max'?-1:1)*((a.primary_value??0)-(b.primary_value??0))),...pending],values=complete.map(item=>item.primary_value as number),low=Math.min(...values,0),high=Math.max(...values,1),span=high-low||1;return <div className="candidateBars">{ordered.map(candidate=><button key={candidate.candidate_id} onClick={()=>onInspect(candidate)} className="candidateBar"><span><strong>{candidate.display_name??candidate.candidate_id}</strong>{candidate.candidate_id===baselineId&&<i>Referencia</i>}{!guided&&<small>{candidate.candidate_id}</small>}</span><span className="barTrack">{candidate.primary_value!=null&&<i style={{width:`${10+90*((candidate.primary_value-low)/span)}%`}}/>}</span><span>{candidate.primary_value==null?humanLabel(candidate.status):fmt.format(candidate.primary_value)}<small>{candidate.completed_unit_count??0} / {candidate.planned_unit_count??'—'} pruebas</small></span></button>)}</div>}
 
-function LiveVisual({problem,preview}:{problem?:string;preview?:LiveRun['active_preview']|null}){
-  if(!preview)return <div className="liveWaiting"><span className="pulse"/><p>Esperando que termine una evaluación real. El heartbeat confirma que el trabajo continúa.</p></div>
-  const primary=preview.partial_metrics?.find(metric=>metric.value!=null)
-  return <div className="liveVisual"><div className="liveMetric"><span>{primary?.name??'Métrica parcial'}</span><strong>{primary?.value==null?'Todavía no calculada':fmt.format(primary.value)}</strong><small>{preview.evaluation_role==='selection_backtest'?'Prueba histórica · entrenado hasta '+(preview.training_end??'el origen indicado'):'Acumulada solo con predicciones ya persistidas.'}</small></div>{problem==='classification'?<ClassificationPreview rows={preview.predictions}/>:problem==='forecasting'?<ForecastPreview rows={preview.predictions}/>:<RegressionPreview rows={preview.predictions}/>}</div>
-}
+function Trajectory({candidate,decision,metric}:{candidate?:LiveCandidate;decision?:LiveRun['selection_decision'];metric?:string}){const points=decision?.metric_trajectories?.[candidate?.candidate_id??'']?.slice(0,50)??[];if(!points.length)return null;const values=points.flatMap(point=>[point.candidate_value,point.baseline_value]).filter((value):value is number=>value!=null),low=Math.min(...values),high=Math.max(...values),span=high-low||1,x=(index:number)=>55+(index/Math.max(points.length-1,1))*510,y=(value:number)=>220-((value-low)/span)*170,candidatePath=points.filter(point=>point.candidate_value!=null).map((point,index)=>`${x(index)},${y(point.candidate_value as number)}`).join(' '),baselinePath=points.filter(point=>point.baseline_value!=null).map((point,index)=>`${x(index)},${y(point.baseline_value as number)}`).join(' ');return <section className="panel chartPanel"><span className="sectionQuestion">¿Cambió al reunir más evidencia?</span><h2>Cómo cambió la comparación al añadir pruebas</h2><p>El resultado puede mejorar o empeorar cuando añadimos más evidencia. No suavizamos ni inventamos puntos.</p><svg viewBox="0 0 600 260" role="img" aria-label={`Evolución acumulada de ${metricLabel(metric)}`}>{points.length>1&&<><polyline points={baselinePath} className="validationLine"/><polyline points={candidatePath} className="historyLine"/></>}{points.map((point,index)=><g key={point.unit_id}>{point.baseline_value!=null&&<circle cx={x(index)} cy={y(point.baseline_value)} r="4" className="baselinePoint"/>}{point.candidate_value!=null&&<circle cx={x(index)} cy={y(point.candidate_value)} r="4" className="chartPoint"/>}<text x={x(index)} y="244" className="axisTick axisTickX">{index+1}</text></g>)}</svg><div className="chartLegend"><span className="historyLegend">{candidate?.display_name}</span><span className="validationLegend">Referencia sobre las mismas pruebas</span></div></section>}
+function SelectionGate({decision}:{decision?:LiveRun['selection_decision']}){const item=decision?.candidate_decisions?.find(value=>value.candidate_id===decision.provisional_selected_candidate_id||value.candidate_id===decision.selected_candidate_id),state=(passed?:boolean)=>passed==null?'Pendiente':passed?'Cumple':'No cumple';return <section className="panel gateCard"><span className="sectionQuestion">¿Qué falta comprobar?</span><h2>¿Qué necesita cumplir un modelo para reemplazar la referencia?</h2><div className="gateGrid"><article><strong>Mejora mínima</strong><span>Necesita mejorar al menos {fmt.format((decision?.minimum_practical_gain??.03)*100)}%.</span><i>{state(item&&item.joint_improvement!=null?item.joint_improvement>=(decision?.minimum_practical_gain??.03):undefined)}</i></article><article><strong>Consistencia</strong><span>Debe superar la referencia en suficientes comparaciones válidas.</span><i>{item?`${item.won_units} de ${item.paired_units} · ${state(item.won_units>=item.required_wins)}`:'Pendiente'}</i></article><article><strong>Mejora típica</strong><span>La mediana de las mejoras debe ser positiva.</span><i>{state(item?.median_paired_improvement==null?undefined:item.median_paired_improvement>0)}</i></article><article><strong>Simplicidad</strong><span>Si quedan prácticamente empatados, preferimos el más sencillo.</span><i>{decision?'Aplicada':'Pendiente'}</i></article></div><p className="muted">Estas son reglas conservadoras de Laboratorio ML, no una prueba de significancia estadística.</p></section>}
+function Learning({live}:{live:LiveRun|null}){const failed=live?.candidates.find(item=>['failed','timeout','cancelled'].includes(item.status)),baselineId=live?.plan_summary?.baseline_candidate_id,baseline=live?.candidates.find(item=>item.candidate_id===baselineId);let message='Todavía estamos reuniendo evidencia. Nada pendiente se interpreta como cero.';if(live?.selection_decision?.selected_candidate_id===baselineId)message='Ningún modelo aprendido superó todos los requisitos. Conservamos la referencia.';else if(live?.selection_decision)message='El modelo provisional superó la referencia con la evidencia de selección disponible.';else if(failed)message=`${failed.display_name} no completó todas sus evaluaciones y no puede participar en la selección final.`;else if(baseline?.primary_value!=null)message=`La referencia obtuvo ${metricLabel(baseline.primary_metric_id)} ${fmt.format(baseline.primary_value)}. Los demás candidatos deberán mejorarla de forma suficiente y consistente.`;return <section className="panel learningCard"><span className="sectionQuestion">¿Qué aprendimos hasta ahora?</span><h2>Lectura provisional</h2><p>{message}</p><small>No podemos concluir causalidad ni garantizar el mismo rendimiento en datos futuros.</small></section>}
+function ConfirmationAndHoldout({live}:{live:LiveRun|null}){if(!live?.confirmation&&!live?.final_test&&!live?.selection_decision)return null;return <section className="twoCol"><article className="panel"><span className="sectionQuestion">Comprobación adicional de estabilidad</span><h2>Confirmación</h2>{live.confirmation?<><strong>{live.confirmation.status==='confirmed'?'Confirmada':live.confirmation.status==='not_confirmed'?'No confirmada':'No ejecutada'}</strong><p>{live.confirmation.status==='confirmed'?'La mejora volvió a aparecer con suficiente consistencia.':live.confirmation.status==='not_confirmed'?'La mejora no volvió a aparecer con suficiente consistencia. Conservamos la referencia.':'El soporte no permitía separar otra comprobación sin relajar las reglas.'}</p>{live.confirmation.split_count!=null&&<small>{live.confirmation.won_pairs??0} de {live.confirmation.split_count} comparaciones ganadas.</small>}</>:<p>Pendiente o no aplicable.</p>}</article><article className="panel"><span className="sectionQuestion">Evidencia que no eligió el modelo</span><h2>Prueba reservada</h2>{live.final_test?<><p>Esta parte de los datos no participó en elegir el modelo.</p><strong>{live.final_test.selection_improvement_repeated?'La mejora volvió a aparecer.':'La mejora no se repitió en esta prueba.'}</strong><small>El ganador no cambia después de verla.</small></>:<p>No reservamos una prueba final porque separar más datos habría dejado demasiado poco soporte, o aún no llegamos a esta etapa.</p>}</article></section>}
+function ReplayPanel({events,index,playing,speed,setIndex,setPlaying,setSpeed}:{events:ReplayEvent[];index:number;playing:boolean;speed:number;setIndex:(value:number)=>void;setPlaying:(value:boolean)=>void;setSpeed:(value:number)=>void}){const event=events[index];return <section className="panel replayPanel"><div className="alert info"><strong>Recorrido de una ejecución terminada.</strong><span>Usa eventos persistidos; no vuelve a entrenar.</span></div><h2>{event?progressMessage(event.stage,event.message_code):'No hay eventos disponibles'}</h2><p>{event?`${index+1} de ${events.length} · ${new Date(event.created_at).toLocaleTimeString('es-PE')}`:'—'}</p><div className="rowActions"><button className="button secondary" disabled={index===0} onClick={()=>setIndex(Math.max(0,index-1))}>Anterior</button><button className="button secondary" disabled={index>=events.length-1} onClick={()=>setIndex(Math.min(events.length-1,index+1))}>Siguiente</button><button className="button primary" onClick={()=>setPlaying(!playing)}>{playing?'Pausar':'Reproducir'}</button><button className="button secondary" onClick={()=>setSpeed(speed===1?2:1)}>{speed}x</button></div></section>}
 
-function RegressionPreview({rows}:{rows:LivePrediction[]}){
-  const points=rows.filter(row=>typeof row.actual==='number'&&typeof row.predicted==='number').slice(0,2000)
-  if(!points.length)return <p>Todavía no hay puntos válidos para mostrar.</p>
-  const values=points.flatMap(row=>[row.actual as number,row.predicted as number]),lo=Math.min(...values),hi=Math.max(...values),span=hi-lo||1
-  const x=(v:number)=>42+((v-lo)/span)*516,y=(v:number)=>238-((v-lo)/span)*196
-  return <svg viewBox="0 0 600 280" role="img" aria-label="Valores reales frente a predichos de las evaluaciones completadas"><line x1={x(lo)} y1={y(lo)} x2={x(hi)} y2={y(hi)} className="chartReference"/>{points.map((row,index)=><circle key={row.row_id??index} cx={x(row.actual as number)} cy={y(row.predicted as number)} r="4" className="chartPoint"><title>{'Real '+fmt.format(row.actual as number)+', predicho '+fmt.format(row.predicted as number)}</title></circle>)}<text x="300" y="272" className="axisTitle">Real</text><text x="15" y="140" transform="rotate(-90 15 140)" className="axisTitle">Predicho</text></svg>
-}
-
-function ClassificationPreview({rows}:{rows:LivePrediction[]}){
-  return <div className="tableWrap"><table><thead><tr><th>Registro</th><th>Real</th><th>Predicho</th><th>Resultado</th></tr></thead><tbody>{rows.slice(0,50).map((row,index)=><tr key={row.row_id??index}><td>{row.row_id??index+1}</td><td>{String(row.actual)}</td><td>{String(row.predicted)}</td><td>{row.actual===row.predicted?'Acierto':'Error'}</td></tr>)}</tbody></table></div>
-}
-
-function ForecastPreview({rows}:{rows:LivePrediction[]}){
-  return <div><p><strong>{rows[0]?.unit_id?.replace('origin-','Prueba histórica ')}</strong> · una emisión de {rows.length} pasos; no se conecta con otros orígenes.</p><div className="tableWrap"><table><thead><tr><th>Periodo</th><th className="numeric">Real</th><th className="numeric">Predicho</th><th className="numeric">Error</th></tr></thead><tbody>{rows.map((row,index)=><tr key={row.record_id??index}><td>{row.target_period}</td><td className="numeric">{formatValue(row.actual)}</td><td className="numeric">{formatValue(row.predicted)}</td><td className="numeric">{formatValue(row.error)}</td></tr>)}</tbody></table></div></div>
-}
-
+const LiveVisual=memo(function LiveVisual({problem,preview,tab,guided}:{problem?:string;preview:LivePreview|null;tab:'main'|'errors';guided:boolean}){if(!preview)return <div className="liveWaiting"><span className="pulse"/><p>Esperando que termine una evaluación real. El heartbeat confirma que el trabajo continúa.</p></div>;const primary=preview.partial_metrics?.find(metric=>metric.value!=null);return <div className="liveVisual"><div className="liveMetric"><span>{metricLabel(primary?.metric_id,primary?.name)}</span><strong>{primary?.value==null?'Todavía no calculado':fmt.format(primary.value)}</strong><small>{preview.count_complete??preview.predictions.length} predicciones completas · {preview.count_preview??preview.predictions.length} visibles</small>{!guided&&<small>{preview.unit_id} · {preview.preview_sha256?.slice(0,12)}</small>}</div>{problem==='classification'?<ClassificationPreview preview={preview}/>:problem==='forecasting'?<ForecastPreview preview={preview}/>:tab==='errors'?<ErrorPreview preview={preview}/>:<RegressionPreview rows={preview.predictions}/>}</div>})
+function RegressionPreview({rows}:{rows:LivePrediction[]}){const points=rows.filter(row=>typeof row.actual==='number'&&typeof row.predicted==='number').slice(0,1000);if(!points.length)return <p>Todavía no hay puntos válidos para mostrar.</p>;const values=points.flatMap(row=>[row.actual as number,row.predicted as number]),lo=Math.min(...values),hi=Math.max(...values),span=hi-lo||1,x=(v:number)=>42+((v-lo)/span)*516,y=(v:number)=>238-((v-lo)/span)*196;return <svg viewBox="0 0 600 280" role="img" aria-label="Valores reales frente a predichos"><line x1={x(lo)} y1={y(lo)} x2={x(hi)} y2={y(hi)} className="chartReference"/>{points.map((row,index)=><circle key={row.row_id??index} cx={x(row.actual as number)} cy={y(row.predicted as number)} r="4" className="chartPoint"><title>{`Real ${fmt.format(row.actual as number)}, predicho ${fmt.format(row.predicted as number)}`}</title></circle>)}<text x="300" y="272" className="axisTitle">Real</text><text x="15" y="140" transform="rotate(-90 15 140)" className="axisTitle">Predicho</text></svg>}
+function ErrorPreview({preview}:{preview:LivePreview}){const histogram=preview.diagnostics?.error_histogram;if(!histogram)return <p>Todavía no hay errores suficientes.</p>;const max=Math.max(...histogram.counts,1);return <div><div className="miniMetrics"><Kpi label="MAE provisional" value={metricValue(preview,'mae')}/><Kpi label="Mediana del error absoluto" value={formatValue(preview.diagnostics?.median_absolute_error)}/><Kpi label="P90 del error absoluto" value={formatValue(preview.diagnostics?.p90_absolute_error)}/></div><div className="histogram" role="img" aria-label="Histograma del error predicho menos real">{histogram.counts.map((count,index)=><i key={index} style={{height:`${Math.max(2,count/max*100)}%`}} title={`${histogram.edges[index]} a ${histogram.edges[index+1]}: ${count}`}/>)}</div><p>La línea central representa error cero. El backend calcula todos los estadísticos.</p></div>}
+function ClassificationPreview({preview}:{preview:LivePreview}){const d=preview.diagnostics,labels=d?.class_labels??[],matrix=d?.confusion_matrix??[],shown=labels.slice(0,20);return <div><div className="miniMetrics">{['balanced_accuracy','macro_f1','accuracy'].map(id=><Kpi key={id} label={metricLabel(id)} value={metricValue(preview,id)}/>)}</div>{labels.length>20&&<div className="alert info">Se resumen 20 de {labels.length} categorías; las métricas usan todas.</div>}<div className="tableWrap"><table className="confusion"><thead><tr><th>Real \ Predicho</th>{shown.map(label=><th key={label}>{label}</th>)}<th>Recall</th></tr></thead><tbody>{matrix.slice(0,20).map((row,rowIndex)=><tr key={shown[rowIndex]}><th>{shown[rowIndex]}</th>{row.slice(0,20).map((value,columnIndex)=><td key={columnIndex} className={rowIndex===columnIndex?'correctCell':'errorCell'}>{value}</td>)}<td>{formatValue(d?.per_class?.[rowIndex]?.recall)}</td></tr>)}</tbody></table></div>{d?.per_class?.some(item=>item.support>=5&&item.recall===0)&&<div className="alert warning">El modelo no reconoció ningún caso de al menos una categoría con soporte suficiente durante la evaluación.</div>}</div>}
+function ForecastPreview({preview}:{preview:LivePreview}){const rows=preview.predictions,history=preview.training_history??[],all=[...history.map(item=>item.actual),...rows.flatMap(row=>[row.actual,row.predicted]).filter((value):value is number=>typeof value==='number')];if(!all.length)return <p>Todavía no hay una prueba histórica completa.</p>;const lo=Math.min(...all),hi=Math.max(...all),span=hi-lo||1,total=history.length+rows.length,x=(index:number)=>45+index/Math.max(total-1,1)*520,y=(value:number)=>225-(value-lo)/span*175,hist=history.map((item,index)=>`${x(index)},${y(item.actual)}`).join(' '),pred=rows.map((row,index)=>`${x(history.length+index)},${y(row.predicted as number)}`).join(' '),actual=rows.map((row,index)=>`${x(history.length+index)},${y(row.actual as number)}`).join(' ');return <div><p><strong>Entrenado hasta:</strong> {preview.training_end??'—'}. <strong>Intentó estimar:</strong> {rows[0]?.target_period??'—'}–{rows.at(-1)?.target_period??'—'}.</p><svg viewBox="0 0 600 270" role="img" aria-label="Histórico conocido, valores posteriores reales y predicción"><polyline points={hist} className="historyLine"/><line x1={x(history.length-.5)} x2={x(history.length-.5)} y1="35" y2="235" className="forecastStart"/><text x={x(history.length-.5)+5} y="48" className="forecastStartLabel">Hasta aquí conocía el método</text><polyline points={actual} className="validationLine"/><polyline points={pred} className="futureLine"/></svg><HorizonErrors rows={preview.diagnostics?.error_by_horizon??[]}/></div>}
+function HorizonErrors({rows}:{rows:Array<{horizon:number;n_predictions:number;mae:number}>}){if(!rows.length)return null;const max=Math.max(...rows.map(row=>row.mae),1);return <div><h3>Error según distancia al futuro</h3><div className="horizonBars">{rows.map(row=><div key={row.horizon}><span>Mes +{row.horizon}</span><i style={{width:`${row.mae/max*100}%`}}/><strong>{fmt.format(row.mae)}</strong></div>)}</div></div>}
+function metricValue(preview:LivePreview,id:string){const metric=preview.partial_metrics.find(item=>item.metric_id===id);return metric?.value==null?'Todavía no calculado':fmt.format(metric.value)}
 function candidateName(candidates:LiveCandidate[],id:string){return candidates.find(item=>item.candidate_id===id)?.display_name??id}
-function formatScore(candidate?:LiveCandidate){return candidate?.primary_value==null?'Solo entran candidatos completos al ranking.':humanLabel(candidate.primary_metric_id??'métrica')+': '+fmt.format(candidate.primary_value)}
-function formatValue(value:unknown){return typeof value==='number'?fmt.format(value):'—'}
+function formatValue(value:unknown){return typeof value==='number'?fmt.format(value):'Todavía no calculado'}
 function clock(seconds:number){return Math.floor(seconds/60).toString().padStart(2,'0')+':'+(seconds%60).toString().padStart(2,'0')}
-function candidateReason(candidate:LiveCandidate){if(candidate.reason_code)return humanLabel(candidate.reason_code);if(candidate.candidate_id.includes('balanced'))return 'Los pesos cambian el coste de errores durante el entrenamiento; no crean observaciones.';return 'Evaluado con el plan congelado y las mismas observaciones comparables.'}
-function teachingMessage(eventType?:string,problem?:string){
-  if(eventType==='candidate_started')return 'Primero medimos una regla sencilla. Así sabremos si los modelos aportan algo.'
-  if(eventType==='unit_started')return problem==='forecasting'?'Estamos simulando estar en esta fecha del pasado. El método solo conoce lo ocurrido hasta ese momento.':'Este modelo aprende con una parte de los datos. Después comprobamos qué predice en la parte apartada.'
-  if(eventType==='selection_completed')return 'Miramos error, consistencia y complejidad. Una diferencia pequeña no basta para preferir un modelo más complejo.'
-  if(eventType==='final_test_completed')return 'La elección ya está cerrada. Ahora mostramos qué ocurrió en datos que no usamos para elegir.'
-  if(eventType==='forecast_ready')return 'Conservamos el método elegido y lo ajustamos con el histórico disponible para estimar los próximos meses.'
-  return 'Vamos a comparar estas formas de aprender y comprobaremos sus resultados con datos que no utilizaron para ajustar ese entrenamiento.'
-}

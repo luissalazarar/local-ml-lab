@@ -37,6 +37,8 @@ from local_ml_lab.domain.contracts import (
 )
 from local_ml_lab.examples import BY_ID, public_examples
 from local_ml_lab.jobs import canonical_hash, enqueue
+from local_ml_lab.ml.planning import PLAN_POLICY_VERSION
+from local_ml_lab.ml.selection import POLICY_VERSION as SELECTION_POLICY_VERSION
 from local_ml_lab.settings import settings
 
 app = FastAPI(
@@ -162,6 +164,14 @@ def system(request: Request):
             "forecasting": True,
             "exploration": True,
             "shap": settings.shap_enabled,
+        },
+        "analytical_engine": {
+            "version": __version__,
+            "selection_policy": SELECTION_POLICY_VERSION,
+            "analysis_plan_version": PLAN_POLICY_VERSION,
+            "forecast_methods_count": 7,
+            "tabular_candidates_count": 10,
+            "tabular_catalog": {"regression": 4, "classification": 6},
         },
         "openai": {"configured": bool(sid and sessions.get(sid, {}).get("openai_key"))},
     }
@@ -639,6 +649,21 @@ def list_runs(db: Session = Depends(get_db)):
         version = db.get(DatasetVersion, run.dataset_version_id)
         data["dataset_version_kind"] = version.version_kind if version else "original"
         data["preparation_summary"] = version.preparation_summary if version else {}
+        dataset = db.get(Dataset, version.dataset_id) if version else None
+        data["dataset_original_name"] = dataset.original_filename if dataset else None
+        if run.result_ref and (settings.data_root / run.result_ref).is_file():
+            result = json.loads((settings.data_root / run.result_ref).read_text(encoding="utf-8"))
+            decision = result.get("selection_decision", {})
+            candidates = result.get("candidates", [])
+            names = {
+                item.get("candidate_id", item.get("model_id")): item.get("display_name")
+                for item in candidates
+            }
+            data["selected_model_name"] = names.get(decision.get("selected_candidate_id"))
+            data["baseline_model_name"] = names.get(decision.get("baseline_candidate_id"))
+            data["result_summary"] = result.get("baseline_comparison", {}).get(
+                "observed_predictive_utility"
+            )
         items.append(data)
     return {"items": items}
 
@@ -735,10 +760,7 @@ def get_live_run(
     recent = list(
         reversed(
             db.scalars(
-                select(Event)
-                .where(Event.job_id == job.id)
-                .order_by(Event.seq.desc())
-                .limit(50)
+                select(Event).where(Event.job_id == job.id).order_by(Event.seq.desc()).limit(50)
             ).all()
         )
     )
@@ -749,6 +771,7 @@ def get_live_run(
         return Response(status_code=304, headers={"ETag": etag})
     response.headers["ETag"] = etag
     live_state = job.progress.get("live_state", {})
+    active_preview = _load_live_preview(run.id, live_state.get("active_preview"))
     candidates = list(live_state.get("candidates", {}).values())
     plan_summary = live_state.get("plan_summary") or {}
     return {
@@ -773,8 +796,11 @@ def get_live_run(
         "ranking": live_state.get("ranking", []),
         "active_candidate_id": live_state.get("active_candidate_id"),
         "active_unit_id": live_state.get("active_unit_id"),
-        "active_preview": live_state.get("active_preview"),
+        "active_preview": active_preview,
+        "preview_index": live_state.get("previews", {}),
+        "primary_selection_decision": live_state.get("primary_selection_decision"),
         "selection_decision": live_state.get("selection_decision"),
+        "confirmation": live_state.get("confirmation"),
         "final_test": live_state.get("final_test"),
         "last_events": [
             {
@@ -794,6 +820,64 @@ def get_live_run(
             for event in recent
         ],
         "result_available": run.result_available,
+    }
+
+
+def _load_live_preview(run_id: str, summary: dict | None):
+    if not summary or not summary.get("preview_ref"):
+        return summary
+    run_dir = (settings.data_root / "runs" / run_id).resolve()
+    live_dir = (run_dir / "live").resolve()
+    preview_path = (run_dir / summary["preview_ref"]).resolve()
+    if not preview_path.is_relative_to(live_dir) or not preview_path.is_file():
+        return {**summary, "predictions": [], "preview_unavailable": True}
+    payload = json.loads(preview_path.read_text(encoding="utf-8"))
+    if payload.get("sha256") != summary.get("preview_sha256"):
+        return {**summary, "predictions": [], "preview_unavailable": True}
+    return {**summary, **payload}
+
+
+@app.get("/api/v1/runs/{run_id}/live-preview/{candidate_id}")
+def get_live_preview(
+    run_id: str,
+    candidate_id: str,
+    unit_id: str | None = None,
+    db: Session = Depends(get_db),
+):
+    run = db.get(Run, run_id)
+    if not run or not run.latest_job_id:
+        raise HTTPException(404)
+    job = db.get(Job, run.latest_job_id)
+    previews = (job.progress.get("live_state", {}).get("previews", {})).get(candidate_id, {})
+    latest_unit = next(reversed(previews), None) if previews else None
+    summary = previews.get(unit_id or latest_unit)
+    if not summary:
+        raise HTTPException(404)
+    return _load_live_preview(run_id, summary)
+
+
+@app.get("/api/v1/runs/{run_id}/replay")
+def run_replay(
+    run_id: str,
+    after: int = 0,
+    limit: int = Query(default=200, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    run = db.get(Run, run_id)
+    if not run or not run.latest_job_id:
+        raise HTTPException(404)
+    events = db.scalars(
+        select(Event)
+        .where(Event.job_id == run.latest_job_id, Event.seq > after)
+        .order_by(Event.seq)
+        .limit(limit)
+    ).all()
+    return {
+        "run_id": run_id,
+        "job_id": run.latest_job_id,
+        "terminal": run.status
+        in {"succeeded", "succeeded_with_warnings", "failed", "cancelled", "interrupted"},
+        "items": [serialize(event) for event in events],
     }
 
 
@@ -965,12 +1049,15 @@ def project_context(result, level, detail):
             "validation_plan",
             "candidates",
             "selection_decision",
+            "confirmation",
             "evaluation_metrics",
             "baseline_comparison",
             "final_test",
             "explanation_scope",
             "reliability",
             "drivers",
+            "diagnostics",
+            "forecast",
             "limitations",
             "recommended_actions",
             "engine_version",

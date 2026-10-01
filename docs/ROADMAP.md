@@ -2,7 +2,7 @@
 
 ## V1
 
-Carga/perfilado CSV, XLSX y Parquet; selección de hoja/header XLSX; preparación conservadora y auditable con receta, lineage, cuarentena y Excel descargable; regresión y clasificación para registros independientes; forecasting mensual regular univariado; referencias, PFI fuera de train, progreso cancelable, historial, borrado seguro, Excel/PDF y contexto offline.
+Carga/perfilado CSV, XLSX y Parquet; selección de hoja/header XLSX; preparación conservadora y auditable con receta, lineage, cuarentena y Excel descargable; regresión y clasificación para registros independientes; forecasting mensual regular univariado; referencias, selección conservadora con confirmación tabular cuando aplica, PFI fuera de train, LIVE/replay persistido, historial, borrado seguro, Excel/PDF y contexto offline.
 
 ## V1.1
 

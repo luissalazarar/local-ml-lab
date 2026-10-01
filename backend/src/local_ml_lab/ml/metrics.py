@@ -29,6 +29,8 @@ def regression_metrics(y, pred, role="selection_oof"):
     values = {
         "mae": float(mean_absolute_error(actual, predicted)),
         "rmse": float(math.sqrt(mean_squared_error(actual, predicted))),
+        "median_absolute_error": float(np.median(np.abs(predicted - actual))),
+        "p90_absolute_error": float(np.percentile(np.abs(predicted - actual), 90)),
         "r2": None,
     }
     reasons = {"r2": None}
