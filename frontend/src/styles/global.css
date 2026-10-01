@@ -349,7 +349,8 @@ summary{cursor:pointer;color:var(--brand-blue);font-size:.8125rem;margin-top:4px
 .followControls{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap}
 .liveWaiting{display:flex;align-items:center;justify-content:center;gap:14px;min-height:220px;margin-top:18px;border:1px dashed var(--line);border-radius:12px;background:var(--surface-muted);color:var(--muted)}
 .liveWaiting p{margin:0}
-.liveVisual{display:grid;grid-template-columns:220px minmax(0,1fr);gap:22px;margin-top:18px;align-items:start}
+.liveVisual{display:grid;grid-template-columns:220px minmax(0,1fr);gap:22px;min-width:0;margin-top:18px;align-items:start}
+.liveVisual>*{min-width:0}
 .liveVisual svg{width:100%;min-height:280px;border:1px solid var(--line-soft);border-radius:12px;background:#fff}
 .liveMetric{display:grid;gap:6px;padding:18px;border-radius:12px;background:var(--teal-light)}
 .liveMetric span,.liveMetric small{color:var(--muted)}
@@ -485,7 +486,7 @@ summary{cursor:pointer;color:var(--brand-blue);font-size:.8125rem;margin-top:4px
   .driverList>div{grid-template-columns:minmax(105px,1fr) 1.5fr 64px}
   .chartPanel{padding-left:14px;padding-right:14px}
   .liveFacts,.liveKpis{grid-template-columns:1fr 1fr}
-  .liveVisual{grid-template-columns:1fr}
+  .liveVisual{grid-template-columns:minmax(0,1fr)}
   .baselineNote{display:block}
   .baselineNote>a{display:inline-block;margin-top:14px}
   .glossaryGrid{grid-template-columns:repeat(2,minmax(0,1fr))}
