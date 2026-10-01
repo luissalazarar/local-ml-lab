@@ -5,7 +5,7 @@ def test_r2_constant_is_null():
     rows = regression_metrics([4, 4, 4], [4, 4, 4])
     r2 = next(row for row in rows if row["metric_id"] == "r2")
     assert r2["value"] is None
-    assert r2["reason_code"] == "NOT_DEFINED"
+    assert r2["reason_code"] == "CONSTANT_TARGET"
 
 
 def test_mae_and_rmse_are_finite():

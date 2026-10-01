@@ -98,10 +98,10 @@ def evaluate_preflight(frame: pd.DataFrame, profile: dict, config: dict) -> dict
         _check_forecast(frame, columns, config, blockers, warnings)
 
     if problem in {"regression", "classification"} and not _usable_features(columns, config, target):
-        blockers.append(_issue(
+        warnings.append(_issue(
             "NO_USABLE_FEATURES",
-            "No queda ninguna variable útil después de excluir target, IDs y columnas constantes.",
-            "Incluye al menos una variable disponible antes del resultado que no sea un identificador.",
+            "No queda ninguna variable seleccionada; solo se evaluará una referencia que no usa variables.",
+            "Puedes continuar con la referencia o incluir una variable disponible antes del resultado.",
         ))
     if len(target_values) < 20 and not any(x["code"] == "INSUFFICIENT_EVALUABLE_ROWS" for x in blockers):
         warnings.append(_issue(
@@ -114,7 +114,8 @@ def evaluate_preflight(frame: pd.DataFrame, profile: dict, config: dict) -> dict
 
 
 def _usable_features(columns: dict, config: dict, target: str) -> list[str]:
-    included = set(config.get("included_column_ids") or columns)
+    configured = config.get("included_column_ids", None)
+    included = set(columns) if configured is None else set(configured)
     excluded = set(config.get("excluded_column_ids") or []) | {target}
     return [
         column_id
@@ -182,7 +183,7 @@ def _check_forecast(frame, columns, config, blockers, warnings) -> None:
                 "La serie tiene meses faltantes. Forecasting V1 exige un calendario mensual continuo.",
                 "Completa la serie con datos reales o usa Exploración; la app no inventa meses.",
             ))
-    if isinstance(horizon, int) and len(unique) < horizon + 3:
+    if isinstance(horizon, int) and len(unique) < horizon + 2:
         blockers.append(_issue(
             "INSUFFICIENT_HISTORY",
             "No hay suficiente historial para separar un bloque de validación y estimar ese horizonte.",

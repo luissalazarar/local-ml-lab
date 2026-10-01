@@ -30,7 +30,9 @@ def test_blocks_singleton_no_features_and_bad_months():
         {"problem_type": "classification", "target_column_id": "c0002", "included_column_ids": []},
     )
     codes = {item["code"] for item in singleton["blockers"]}
-    assert {"CLASS_SUPPORT_INSUFFICIENT", "NO_USABLE_FEATURES"} <= codes
+    warning_codes = {item["code"] for item in singleton["warnings"]}
+    assert "CLASS_SUPPORT_INSUFFICIENT" in codes
+    assert "NO_USABLE_FEATURES" in warning_codes
 
     raw = pd.DataFrame({
         "fecha": ["2025-01-01", "2025-02-01", "2025-04-01", "2025-04-15", "2025-05-01", "2025-06-01"],

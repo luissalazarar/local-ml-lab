@@ -64,13 +64,20 @@ export const concepts: Record<string, Concept> = {
   horizon: { name: 'Horizonte', short: 'Cantidad de meses futuros que se estimarán.' },
   seasonality: { name: 'Estacionalidad', short: 'Un patrón que se repite en periodos equivalentes.' },
   dummy_median: { name: 'Mediana', short: 'Predice siempre un valor central. Es una referencia mínima.' },
+  dummy_mean: { name: 'Media', short: 'Predice siempre el promedio de entrenamiento. Es la referencia para RMSE o R².' },
   dummy_prior: { name: 'Clase frecuente', short: 'Predice la categoría más común.' },
   ridge: { name: 'Ridge', short: 'Modelo lineal con regularización que limita coeficientes extremos.' },
   logistic_regression: { name: 'Logística', short: 'Modelo lineal para categorías.' },
+  logistic_regression_balanced: { name: 'Logística con pesos balanceados', short: 'Da más peso a los errores de clases con menos casos; no crea observaciones.' },
   extra_trees: { name: 'Extra Trees', short: 'Combina muchos árboles aleatorizados y puede capturar relaciones no lineales.' },
   random_forest: { name: 'Random Forest', short: 'Combina muchos árboles construidos con distintas muestras.' },
   last_value: { name: 'Último valor', short: 'Usa el último dato conocido como referencia.' },
+  historical_mean: { name: 'Media histórica', short: 'Usa la media del prefijo conocido como referencia para series dominadas por ruido.' },
   seasonal_naive: { name: 'Estacional', short: 'Usa el valor equivalente de una temporada anterior.' },
+  linear_trend: { name: 'Tendencia lineal', short: 'Prolonga una tendencia recta aprendida solo con el histórico disponible.' },
+  ridge_trend_month: { name: 'Ridge con tendencia y mes', short: 'Combina tiempo y mes del calendario; incluir ese componente no demuestra estacionalidad.' },
+  holt_damped: { name: 'Holt amortiguado', short: 'Continúa una tendencia, reduciendo gradualmente su fuerza hacia adelante.' },
+  holt_winters_add_damped: { name: 'Holt-Winters aditivo amortiguado', short: 'Combina nivel, tendencia y diferencias que se repiten entre meses.' },
 }
 
 export function explain(id: string) {

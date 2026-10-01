@@ -14,6 +14,7 @@ def migrate() -> None:
 
         Base.metadata.create_all(engine)
         _add_dataset_version_columns()
+        _add_job_columns()
 
 
 def _add_dataset_version_columns() -> None:
@@ -41,3 +42,11 @@ def _add_dataset_version_columns() -> None:
                 connection.execute(
                     text(f"ALTER TABLE dataset_versions ADD COLUMN {name} {definition}")
                 )
+
+
+def _add_job_columns() -> None:
+    """Forward-only live-analysis timestamps for databases created before v0.6."""
+    existing = {column["name"] for column in inspect(engine).get_columns("jobs")}
+    if "started_at" not in existing:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE jobs ADD COLUMN started_at DATETIME"))

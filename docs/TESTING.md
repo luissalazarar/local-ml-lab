@@ -1,12 +1,15 @@
 # Pruebas
 
-El backend usa pytest para lectores reales, métricas, folds, PFI, forecast, procesos cancelables y reportes. El frontend usa Vitest/Testing Library; el smoke de navegador se ejecuta contra el stack real. Los smokes Docker no usan OpenAI ni datasets privados.
+El backend usa pytest para lectores reales, métricas, splits congelados, política controlada, duplicados, PFI, los siete métodos temporales, procesos cancelables, proyección en vivo y reportes. El frontend usa Vitest/Testing Library; el smoke de navegador se ejecuta contra el stack real. Los smokes Docker no usan OpenAI ni datasets privados.
 
 La pasada didáctica también cubre la ayuda contextual con teclado y Escape, el editor de una columna a la vez, lenguaje humano en preview, disponibilidad de filas para el resultado, agregación mensual contextual y el flujo Original → Preparado → Análisis → Entrenamiento. El QA visual obligatorio incluye 1440, 768 y 390 px, zoom 200 %, teclado y ausencia de scroll horizontal de página en Preparar.
+
+La aceptación v0.6 usa casos sintéticos fijos: constante, tendencia, estacional, tendencia estacional, ruido, cambio de nivel, ceros/negativos e historia corta; además relación tabular lineal/no lineal, desbalance, multiclase, target constante, singleton, selección vacía, duplicados y categorías nuevas. No se cambian seeds para obtener un ganador atractivo. También se comprueban gates controlados, leakage por prefijo/train, alineación, futuro exacto, ranking sin parciales, cancelación, recuperación y estado en vivo.
 
 ```bash
 python3 scripts/check_version.py
 cd backend && uv run pytest
+uv run --project backend python scripts/model_selection_acceptance.py
 cd frontend && npm run typecheck && npm run lint && npm run test -- --run && npm run build
 docker compose config
 python3 scripts/smoke.py

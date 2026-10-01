@@ -94,9 +94,10 @@ deadline = time.time() + 120
 cancelled_stage = None
 while time.time() < deadline:
     job = call(f"/jobs/{run['job_id']}")
-    message = job.get("progress", {}).get("message", "")
-    if "Random Forest" in message:
-        cancelled_stage = message
+    live = call(f"/runs/{run['run_id']}/live")
+    candidate_id = live.get("active_candidate_id") or ""
+    if candidate_id.startswith("random_forest"):
+        cancelled_stage = candidate_id
         break
     if job["status"] in {"succeeded", "failed", "cancelled"}:
         raise AssertionError(f"El job terminó antes de alcanzar el último candidato: {job}")

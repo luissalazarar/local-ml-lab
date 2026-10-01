@@ -15,6 +15,7 @@ from rq import Queue
 from rq.serializers import JSONSerializer
 from sqlalchemy import select
 
+from local_ml_lab import __version__
 from local_ml_lab.data.preparation import (
     apply_recipe,
     export_prepared_excel,
@@ -120,12 +121,30 @@ def recover_pending_jobs() -> dict:
     return {"interrupted": interrupted, "recovered": enqueued}
 
 
-def emit(db, job, event_type, stage, message, completed=0, total=None):
+def emit(db, job, event_type, stage, message, completed=0, total=None, payload=None):
+    if job.job_type == "analyze" and event_type == "completed":
+        # The generic job completion must not erase the analytical unit counters.
+        completed = job.progress.get("completed_units", completed)
+        total = job.progress.get("total_units", total)
+    event_payload = {
+        "event_version": "1.0",
+        "event_type": event_type,
+        "run_id": job.run_id,
+        "job_id": job.id,
+        "attempt_id": job.id,
+        "stage": stage,
+        "completed_units": completed,
+        "total_units": total,
+        "message_code": message,
+        **(payload or {}),
+    }
+    live_state = _reduce_live_state(job.progress.get("live_state", {}), event_payload)
     job.progress = {
         "stage": stage,
         "completed_units": completed,
         "total_units": total,
         "message": message,
+        "live_state": live_state,
     }
     job.heartbeat_at = datetime.now(UTC)
     db.add(
@@ -135,7 +154,7 @@ def emit(db, job, event_type, stage, message, completed=0, total=None):
             event_type=event_type,
             stage=stage,
             message_code=message,
-            payload=job.progress,
+            payload=event_payload,
         )
     )
     db.commit()
@@ -150,6 +169,7 @@ def process_job(job_id: str):
             _finish_cancelled(db, job)
             return
         job.status = "running"
+        job.started_at = datetime.now(UTC)
         job.heartbeat_at = datetime.now(UTC)
         db.commit()
         try:
@@ -347,6 +367,12 @@ def apply_preparation(db, job):
 def preflight(db, job):
     pf = db.get(Preflight, job.payload["preflight_id"])
     config = pf.requested_config
+    config["_application_version"] = __version__
+    config["_policy_versions"] = {
+        "analysis_plan": "analysis-plan-2.0",
+        "selection": "selection-policy-2.0",
+        "reliability": "reliability-policy-1.2",
+    }
     emit(db, job, "stage_started", "preflight", "Diseñando una evaluación sin fugas")
     version = db.get(DatasetVersion, config["dataset_version_id"])
     if not version or version.status != "ready":
@@ -397,8 +423,8 @@ def _analysis_child(frame_path, profile_path, config, result_path, updates):
         frame = pd.read_parquet(frame_path)
         profile = json.loads(Path(profile_path).read_text(encoding="utf-8"))
 
-        def progress(stage, message, completed, total):
-            updates.put(("progress", stage, message, completed, total))
+        def progress(event):
+            updates.put(("event", event))
 
         result = analyze(frame, profile, config, progress)
         Path(result_path).write_text(
@@ -492,11 +518,102 @@ def _drain_updates(db, job, updates, child_error):
             update = updates.get_nowait()
         except queue_module.Empty:
             return child_error
-        if update[0] == "progress":
-            _, stage, message, completed, total = update
-            emit(db, job, "progress", stage, message, completed, total)
+        if update[0] == "event":
+            event = update[1]
+            emit(
+                db,
+                job,
+                event["event_type"],
+                event["stage"],
+                event["message_code"],
+                event.get("completed_units", 0),
+                event.get("total_units"),
+                {
+                    key: value
+                    for key, value in event.items()
+                    if key
+                    not in {
+                        "event_type",
+                        "stage",
+                        "message_code",
+                        "completed_units",
+                        "total_units",
+                    }
+                },
+            )
         elif update[0] == "error":
             child_error = (update[1], update[2])
+
+
+def _reduce_live_state(previous, event):
+    """Project structured events into a bounded, restart-safe view."""
+    state = {
+        "revision": int(previous.get("revision", 0)) + 1,
+        "plan_summary": previous.get("plan_summary"),
+        "candidates": dict(previous.get("candidates", {})),
+        "active_candidate_id": previous.get("active_candidate_id"),
+        "active_unit_id": previous.get("active_unit_id"),
+        "active_preview": previous.get("active_preview"),
+        "ranking": list(previous.get("ranking", [])),
+        "selection_decision": previous.get("selection_decision"),
+        "final_test": previous.get("final_test"),
+        "result_summary": previous.get("result_summary"),
+    }
+    event_type = event.get("event_type")
+    candidate_id = event.get("candidate_id")
+    if event_type == "plan_ready":
+        state["plan_summary"] = event.get("plan_summary")
+    if event_type == "candidate_started":
+        state["active_candidate_id"] = candidate_id
+        state["active_preview"] = None
+        state["candidates"][candidate_id] = {
+            "candidate_id": candidate_id,
+            "display_name": event.get("display_name"),
+            "status": "running",
+        }
+    if event_type == "unit_started":
+        state["active_candidate_id"] = candidate_id
+        state["active_unit_id"] = event.get("unit_id")
+    if event_type == "unit_completed":
+        state["active_candidate_id"] = candidate_id
+        state["active_unit_id"] = event.get("unit_id")
+        state["active_preview"] = {
+            "candidate_id": candidate_id,
+            "unit_id": event.get("unit_id"),
+            "evaluation_role": event.get("evaluation_role"),
+            "partial_metrics": event.get("partial_metrics", []),
+            "unit_metrics": event.get("unit_metrics", []),
+            "predictions": list(event.get("preview", []))[:200],
+            "training_end": event.get("training_end"),
+        }
+    if event_type in {"candidate_completed", "candidate_failed", "candidate_skipped"}:
+        summary = event.get("candidate") or {
+            "candidate_id": candidate_id,
+            "status": "ineligible" if event_type == "candidate_skipped" else "failed",
+            "reason_code": event.get("message_code"),
+        }
+        state["candidates"][candidate_id] = summary
+        complete = [
+            value
+            for value in state["candidates"].values()
+            if value.get("status") == "completed" and value.get("primary_value") is not None
+        ]
+        direction = (state.get("plan_summary") or {}).get("metric_direction", "min")
+        state["ranking"] = sorted(
+            complete,
+            key=lambda value: (
+                -value["primary_value"] if direction == "max" else value["primary_value"],
+                value.get("complexity_rank", 999),
+            ),
+        )
+    if event_type == "selection_completed":
+        state["selection_decision"] = event.get("selection_decision")
+    if event_type == "final_test_completed":
+        state["final_test"] = event.get("final_test")
+    if event_type == "snapshot_frozen":
+        state["result_summary"] = event.get("result_summary")
+    # SQLite JSON mutation tracking requires a fresh object and candidates remain bounded by catalog.
+    return state
 
 
 def terminate_process_tree(pid: int) -> None:
