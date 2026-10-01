@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 from local_ml_lab.data.readers import normalize_columns, profile_frame
-from local_ml_lab.ml.engine import analyze
+from local_ml_lab.ml.engine import analyze, forecast_horizon_diagnostics
 from local_ml_lab.ml.forecasting import FORECAST_SPECS, fit_predict
 
 
@@ -47,6 +47,22 @@ def forecast_result(values, horizon=3, depth="recommended"):
     )
 
 
+def test_forecast_horizon_diagnostics_use_existing_oos_predictions_only():
+    selected = [
+        {"horizon": 1, "actual": 10.0, "predicted": 9.0, "error": -1.0},
+        {"horizon": 2, "actual": 10.0, "predicted": 14.0, "error": 4.0},
+        {"horizon": 3, "actual": 10.0, "predicted": 16.0, "error": 6.0},
+    ]
+    baseline = [
+        {"horizon": 1, "actual": 10.0, "predicted": 12.0, "error": 2.0},
+        {"horizon": 2, "actual": 10.0, "predicted": 12.0, "error": 2.0},
+        {"horizon": 3, "actual": 10.0, "predicted": 12.0, "error": 2.0},
+    ]
+    result = forecast_horizon_diagnostics(selected, baseline, 3)
+    assert result["horizons_evaluated"] == 3
+    assert result["horizons_better_than_baseline"] == 1
+    assert result["horizons_worse"] == 2
+    assert result["warning_code"] == "HORIZON_PERFORMANCE_VARIES"
 def test_empty_feature_selection_runs_only_reference():
     raw = pd.DataFrame({"x": range(30), "y": np.arange(30, dtype=float)})
     result = tabular_result(raw, "regression", "c0002", included=[])

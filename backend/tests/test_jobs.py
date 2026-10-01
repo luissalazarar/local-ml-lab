@@ -70,12 +70,17 @@ def test_live_projection_is_bounded_and_replayed_events_do_not_increment_counts(
         "candidate_id": "ridge",
         "unit_id": "selection-01",
         "evaluation_role": "selection",
-        "preview": [{"row_id": f"r{index}", "actual": index, "predicted": index} for index in range(300)],
+        "preview_ref": "live/ridge/selection-01.json",
+        "preview_sha256": "a" * 64,
+        "preview_count": 300,
+        "complete_prediction_count": 1000,
         "partial_metrics": [],
         "unit_metrics": [],
     }
     first = _reduce_live_state(state, completed)
     replayed = _reduce_live_state(first, completed)
-    assert len(replayed["active_preview"]["predictions"]) == 200
+    assert "predictions" not in replayed["active_preview"]
+    assert replayed["active_preview"]["preview_ref"] == "live/ridge/selection-01.json"
     assert replayed["active_unit_id"] == "selection-01"
     assert replayed["candidates"]["ridge"]["status"] == "running"
+    assert replayed["candidates"]["ridge"]["completed_unit_count"] == 1

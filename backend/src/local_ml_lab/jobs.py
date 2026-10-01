@@ -370,7 +370,7 @@ def preflight(db, job):
     config["_application_version"] = __version__
     config["_policy_versions"] = {
         "analysis_plan": "analysis-plan-2.0",
-        "selection": "selection-policy-2.0",
+        "selection": "selection-policy-2.1",
         "reliability": "reliability-policy-1.2",
     }
     emit(db, job, "stage_started", "preflight", "Diseñando una evaluación sin fugas")
@@ -418,7 +418,7 @@ def preflight(db, job):
     db.commit()
 
 
-def _analysis_child(frame_path, profile_path, config, result_path, updates):
+def _analysis_child(frame_path, profile_path, config, result_path, live_dir, updates):
     try:
         frame = pd.read_parquet(frame_path)
         profile = json.loads(Path(profile_path).read_text(encoding="utf-8"))
@@ -426,7 +426,7 @@ def _analysis_child(frame_path, profile_path, config, result_path, updates):
         def progress(event):
             updates.put(("event", event))
 
-        result = analyze(frame, profile, config, progress)
+        result = analyze(frame, profile, config, progress, live_dir=live_dir)
         Path(result_path).write_text(
             json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8"
         )
@@ -444,6 +444,8 @@ def run_analysis(db, job):
     emit(db, job, "stage_started", "prepare", "Preparando variables")
     out = settings.data_root / "runs" / run.id
     out.mkdir(parents=True, exist_ok=True)
+    live_dir = out / "live"
+    live_dir.mkdir(parents=True, exist_ok=True)
     pending_path = out / f".analysis-{job.id}.json"
     context = multiprocessing.get_context("spawn")
     updates = context.Queue()
@@ -454,6 +456,7 @@ def run_analysis(db, job):
             str(settings.data_root / version.profile_ref),
             pf.resolved_config,
             str(pending_path),
+            str(live_dir),
             updates,
         ),
         name=f"analysis-{job.id}",
@@ -510,6 +513,8 @@ def run_analysis(db, job):
             terminate_process_tree(process.pid)
             process.join(timeout=5)
         pending_path.unlink(missing_ok=True)
+        for temporary in live_dir.glob("**/.*.tmp"):
+            temporary.unlink(missing_ok=True)
 
 
 def _drain_updates(db, job, updates, child_error):
@@ -554,8 +559,11 @@ def _reduce_live_state(previous, event):
         "active_candidate_id": previous.get("active_candidate_id"),
         "active_unit_id": previous.get("active_unit_id"),
         "active_preview": previous.get("active_preview"),
+        "previews": dict(previous.get("previews", {})),
         "ranking": list(previous.get("ranking", [])),
         "selection_decision": previous.get("selection_decision"),
+        "primary_selection_decision": previous.get("primary_selection_decision"),
+        "confirmation": previous.get("confirmation"),
         "final_test": previous.get("final_test"),
         "result_summary": previous.get("result_summary"),
     }
@@ -574,7 +582,7 @@ def _reduce_live_state(previous, event):
     if event_type == "unit_started":
         state["active_candidate_id"] = candidate_id
         state["active_unit_id"] = event.get("unit_id")
-    if event_type == "unit_completed":
+    if event_type in {"unit_completed", "confirmation_unit_completed"}:
         state["active_candidate_id"] = candidate_id
         state["active_unit_id"] = event.get("unit_id")
         state["active_preview"] = {
@@ -583,9 +591,27 @@ def _reduce_live_state(previous, event):
             "evaluation_role": event.get("evaluation_role"),
             "partial_metrics": event.get("partial_metrics", []),
             "unit_metrics": event.get("unit_metrics", []),
-            "predictions": list(event.get("preview", []))[:200],
+            "preview_ref": event.get("preview_ref"),
+            "preview_sha256": event.get("preview_sha256"),
+            "preview_count": event.get("preview_count"),
+            "complete_prediction_count": event.get("complete_prediction_count"),
             "training_end": event.get("training_end"),
         }
+        candidate_previews = dict(state["previews"].get(candidate_id, {}))
+        candidate_previews[event.get("unit_id")] = state["active_preview"]
+        state["previews"][candidate_id] = candidate_previews
+        if candidate_id in state["candidates"]:
+            completed_unit_ids = list(
+                state["candidates"][candidate_id].get("completed_unit_ids", [])
+            )
+            if event.get("unit_id") not in completed_unit_ids:
+                completed_unit_ids.append(event.get("unit_id"))
+            state["candidates"][candidate_id] = {
+                **state["candidates"][candidate_id],
+                "partial_metrics": event.get("partial_metrics", []),
+                "completed_unit_ids": completed_unit_ids,
+                "completed_unit_count": len(completed_unit_ids),
+            }
     if event_type in {"candidate_completed", "candidate_failed", "candidate_skipped"}:
         summary = event.get("candidate") or {
             "candidate_id": candidate_id,
@@ -606,8 +632,20 @@ def _reduce_live_state(previous, event):
                 value.get("complexity_rank", 999),
             ),
         )
+    if event_type == "primary_selection_completed":
+        state["primary_selection_decision"] = event.get("selection_decision")
+    if event_type == "confirmation_started":
+        state["confirmation"] = {
+            "status": "running",
+            "provisional_candidate_id": event.get("provisional_candidate_id"),
+            "baseline_candidate_id": event.get("baseline_candidate_id"),
+            "split_count": event.get("split_count"),
+        }
+    if event_type == "confirmation_completed":
+        state["confirmation"] = event.get("confirmation")
     if event_type == "selection_completed":
         state["selection_decision"] = event.get("selection_decision")
+        state["confirmation"] = event.get("confirmation") or state.get("confirmation")
     if event_type == "final_test_completed":
         state["final_test"] = event.get("final_test")
     if event_type == "snapshot_frozen":

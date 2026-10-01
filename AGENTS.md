@@ -9,6 +9,7 @@ Este repositorio implementa una aplicación local-first y CPU-first para analiza
 - `queue`: Valkey transporta únicamente identificadores de jobs.
 - `/data`: volumen persistente compartido por API y worker; SQLite es la fuente de verdad.
 - `analysis_result.json`: snapshot analítico inmutable. Los reportes y explicaciones no lo reescriben.
+- Los previews LIVE se publican atómicamente bajo `/data/runs/{run}/live`, con un máximo determinista de 500 predicciones; eventos y replay no disparan fits nuevos.
 - La preparación es `Original → DatasetVersion preparada → Modelo`; guarda receta, cuarentena y hashes, y nunca modifica el original.
 - Forecasting V1 significa exclusivamente una serie mensual regular, sin huecos rellenados ni bandas inventadas.
 - La validación tabular aleatoria requiere registros independientes; rechaza o declara fuera de alcance grupos y usos temporales.
@@ -19,14 +20,15 @@ Este repositorio implementa una aplicación local-first y CPU-first para analiza
 2. Ajustar imputación, categorías, escalado y selección solo en train.
 3. No usar holdout para tuning ni cambiar el ganador al ver el test.
 4. Un baseline puede ganar. Un candidato incompleto no puede ganar.
-5. No convertir métricas indefinidas en cero ni serializar NaN/Infinity.
-6. No llamar probabilidad a la confiabilidad ni causalidad a una importancia.
-7. No enviar datos externamente por defecto. Una key OpenAI nunca se persiste ni llega al worker.
-8. No importar scripts, datos, modelos o reglas privadas. Los ejemplos son sintéticos.
-9. No sustituir producción por mocks; los mocks pertenecen a tests.
-10. No borrar datos persistentes para resolver un fallo de arranque.
-11. `version.json` owns the visible `MAJOR.MINOR.BUILD` release. Su `semver` debe coincidir con backend, frontend y lockfile; los cambios solo documentales no publican versión.
-12. Preparar representaciones no es preprocesar el modelo: imputación, escalado, encoding y selección aprendida permanecen dentro de train/fold.
+5. La confirmación tabular compara solo referencia y provisional dentro de desarrollo; nunca ve holdout y una mejora no confirmada conserva la referencia.
+6. No convertir métricas indefinidas en cero ni serializar NaN/Infinity.
+7. No llamar probabilidad a la confiabilidad ni causalidad a una importancia.
+8. No enviar datos externamente por defecto. Una key OpenAI nunca se persiste ni llega al worker.
+9. No importar scripts, datos, modelos o reglas privadas. Los ejemplos son sintéticos.
+10. No sustituir producción por mocks; los mocks pertenecen a tests.
+11. No borrar datos persistentes para resolver un fallo de arranque.
+12. `version.json` owns the visible `MAJOR.MINOR.BUILD` release. Su `semver` debe coincidir con backend, frontend y lockfile; los cambios solo documentales no publican versión.
+13. Preparar representaciones no es preprocesar el modelo: imputación, escalado, encoding y selección aprendida permanecen dentro de train/fold.
 
 ## Comandos
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0 — 2026-09-30
+
+- Añadida `selection-policy-2.1`: el ganador provisional tabular del modo recomendado se vuelve a comparar con la referencia en tres separaciones reproducibles cuando existe soporte; una mejora no confirmada conserva la referencia.
+- Persistidos previews LIVE atómicos y acotados fuera de los eventos, con hashes, métricas backend, comparación, trayectoria, diagnóstico por problema y replay sin nuevos ajustes.
+- Incorporados diagnósticos de error por horizonte a partir de predicciones históricas existentes, P90 de error, métricas por clase y advertencias de cobertura cero.
+- Cerrada la narrativa guiada de selección, confirmación, prueba reservada, resultados, historial, estado, Guía de 20 secciones y exportaciones ampliadas.
+
 ## 0.6.0 — 2026-09-30
 
 - Añadido `AnalysisPlan` inmutable con membresía reproducible, seeds SHA-256, parámetros, presupuestos y hash del plan.

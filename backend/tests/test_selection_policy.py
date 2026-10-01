@@ -1,7 +1,7 @@
 import pytest
 
 from local_ml_lab.ml.metrics import distribution
-from local_ml_lab.ml.selection import select_candidate
+from local_ml_lab.ml.selection import confirmation_gate, select_candidate
 
 
 def candidate(candidate_id, score, units, complexity=1, status="completed"):
@@ -84,3 +84,37 @@ def test_unknown_metric_is_not_silently_reoriented():
             "made_up",
             "min",
         )
+
+
+def test_confirmation_requires_repeated_gain_for_minimize():
+    confirmed = confirmation_gate(
+        10.0, 8.0, [10, 10, 10], [8, 8, 11], "mae", "min"
+    )
+    assert confirmed["status"] == "confirmed"
+    assert confirmed["won_pairs"] == 2
+    rejected = confirmation_gate(
+        10.0, 8.0, [10, 10, 10], [11, 8, 11], "mae", "min"
+    )
+    assert rejected["status"] == "not_confirmed"
+    assert rejected["reason_code"] == "GAIN_NOT_REPEATED_IN_CONFIRMATION"
+
+
+def test_confirmation_orients_maximize_and_requires_three_valid_pairs():
+    confirmed = confirmation_gate(
+        0.5,
+        0.55,
+        [0.5, 0.5, 0.5],
+        [0.56, 0.55, 0.49],
+        "balanced_accuracy",
+        "max",
+    )
+    assert confirmed["status"] == "confirmed"
+    incomplete = confirmation_gate(
+        0.5,
+        0.55,
+        [0.5, 0.5, None],
+        [0.56, 0.55, 0.60],
+        "balanced_accuracy",
+        "max",
+    )
+    assert incomplete["status"] == "not_confirmed"

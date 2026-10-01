@@ -1,4 +1,4 @@
-"""Deterministic v0.6 engine acceptance using synthetic data only."""
+"""Deterministic v0.7 engine acceptance using synthetic data only."""
 
 from __future__ import annotations
 

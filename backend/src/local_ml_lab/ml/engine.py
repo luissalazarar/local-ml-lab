@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import math
+import os
 import signal
 import time
 from contextlib import contextmanager
 from datetime import UTC, datetime
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -35,7 +39,7 @@ from .metrics import (
 )
 from .planning import exact_row_groups, freeze_plan, materialize_splits, stable_row_ids, stable_seed
 from .registry import ModelSpec, specs
-from .selection import select_candidate
+from .selection import confirmation_gate, select_candidate
 
 SUPPORTED_PRIMARY = {
     "regression": {"mae": "min", "rmse": "min", "r2": "max"},
@@ -114,7 +118,94 @@ def _publish(progress, event_type, stage, message_code, completed=0, total=None,
         progress(stage, message_code, completed, total)
 
 
-def analyze(frame: pd.DataFrame, profile: dict, config: dict, progress=lambda *_: None) -> dict:
+def publish_live_preview(
+    live_dir,
+    candidate_id,
+    unit_id,
+    evaluation_role,
+    predictions,
+    partial_metrics,
+    unit_metrics,
+    **metadata,
+):
+    if not live_dir:
+        return None
+    complete_count = len(predictions)
+    if complete_count > 500:
+        indices = np.linspace(0, complete_count - 1, 500, dtype=int)
+        preview = [predictions[int(index)] for index in indices]
+    else:
+        preview = list(predictions)
+    candidate_dir = Path(live_dir) / candidate_id
+    candidate_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema_version": "1.0",
+        "candidate_id": candidate_id,
+        "unit_id": unit_id,
+        "evaluation_role": evaluation_role,
+        "partial_metrics": partial_metrics,
+        "unit_metrics": unit_metrics,
+        "count_preview": len(preview),
+        "count_complete": complete_count,
+        "predictions": preview,
+        **metadata,
+    }
+    unsigned = json.dumps(payload, ensure_ascii=False, sort_keys=True, allow_nan=False).encode()
+    digest = hashlib.sha256(unsigned).hexdigest()
+    payload["sha256"] = digest
+    final_path = candidate_dir / f"{unit_id}.json"
+    pending_path = candidate_dir / f".{unit_id}.{os.getpid()}.tmp"
+    pending_path.write_text(
+        json.dumps(payload, ensure_ascii=False, allow_nan=False), encoding="utf-8"
+    )
+    os.replace(pending_path, final_path)
+    return {
+        "preview_ref": f"live/{candidate_id}/{unit_id}.json",
+        "preview_sha256": digest,
+        "preview_count": len(preview),
+        "complete_prediction_count": complete_count,
+    }
+
+
+def live_preview_diagnostics(problem, predictions, labels=None, include_horizons=False):
+    if not predictions:
+        return {}
+    actual = [item["actual"] for item in predictions]
+    predicted = [item["predicted"] for item in predictions]
+    if problem == "classification":
+        return classification_diagnostics(actual, predicted, labels or [])
+    errors = np.asarray(predicted, dtype=float) - np.asarray(actual, dtype=float)
+    bins = min(40, max(1, int(math.ceil(math.sqrt(len(errors))))))
+    counts, edges = np.histogram(errors, bins=bins)
+    result = {
+        "median_absolute_error": float(np.median(np.abs(errors))),
+        "p90_absolute_error": float(np.percentile(np.abs(errors), 90)),
+        "error_histogram": {
+            "counts": counts.astype(int).tolist(),
+            "edges": edges.astype(float).tolist(),
+            "zero_reference": 0.0,
+        },
+    }
+    if include_horizons:
+        result["error_by_horizon"] = [
+            {
+                "horizon": step,
+                "n_predictions": len(rows),
+                "mae": float(np.mean([abs(float(item["error"])) for item in rows])),
+            }
+            for step in sorted({int(item["horizon"]) for item in predictions})
+            if (rows := [item for item in predictions if int(item["horizon"]) == step])
+        ]
+    return result
+
+
+def analyze(
+    frame: pd.DataFrame,
+    profile: dict,
+    config: dict,
+    progress=lambda *_: None,
+    live_dir: str | Path | None = None,
+) -> dict:
     problem = config["problem_type"]
     if problem == "exploration":
         return exploration_result(profile, config)
@@ -122,11 +213,11 @@ def analyze(frame: pd.DataFrame, profile: dict, config: dict, progress=lambda *_
     if config.get("validation_context", "independent_records") != "independent_records":
         raise ValueError("UNSUPPORTED_VALIDATION_CONTEXT")
     if problem == "forecasting":
-        return forecast_result(frame, profile, config, progress, primary_metric)
-    return tabular_result(frame, profile, config, progress, primary_metric)
+        return forecast_result(frame, profile, config, progress, primary_metric, live_dir)
+    return tabular_result(frame, profile, config, progress, primary_metric, live_dir)
 
 
-def tabular_result(frame, profile, config, progress, primary_metric):
+def tabular_result(frame, profile, config, progress, primary_metric, live_dir=None):
     started = time.monotonic()
     problem = config["problem_type"]
     target = config.get("target_column_id")
@@ -172,6 +263,9 @@ def tabular_result(frame, profile, config, progress, primary_metric):
     splits, split_strategy, split_note = tabular_splits(y_dev, groups_dev, problem, root_seed)
     if not splits:
         return not_evaluable(profile, config, "NO_VALID_SPLIT_PLAN", primary_metric)
+    confirmation_splits, confirmation_reason, confirmation_seed = tabular_confirmation_splits(
+        y_dev, groups_dev, problem, root_seed, config.get("depth", "quick")
+    )
 
     candidate_specs = specs(problem, config.get("depth", "quick"), primary_metric)
     shortest_train = min(len(train) for train, _ in splits)
@@ -185,6 +279,7 @@ def tabular_result(frame, profile, config, progress, primary_metric):
         if reason is None:
             eligible_specs.append(spec)
     plan_units = materialize_splits(splits, dev_row_ids)
+    confirmation_units = materialize_splits(confirmation_splits, dev_row_ids, role="confirmation")
     total_units = len(splits) * len(eligible_specs)
     plan = freeze_plan(
         {
@@ -192,6 +287,7 @@ def tabular_result(frame, profile, config, progress, primary_metric):
             "objective": config["goal"],
             "problem_type": problem,
             "target_column_id": target,
+            "target_display_name": column_name(profile, target),
             "included_column_ids": features,
             "units": "target_unit" if problem == "regression" else "class_label",
             "eligible_population": {
@@ -207,6 +303,16 @@ def tabular_result(frame, profile, config, progress, primary_metric):
                 "holdout_row_ids": [row_ids[int(index)] for index in holdout],
                 "holdout_reason": holdout_reason,
                 "note": split_note,
+                "confirmation": {
+                    "strategy": (
+                        "group_kfold_3" if problem == "regression" else "stratified_group_kfold_3"
+                    ),
+                    "units": confirmation_units,
+                    "seed": confirmation_seed,
+                    "status": "available" if confirmation_units else "not_run",
+                    "reason_code": confirmation_reason,
+                    "uses_holdout": False,
+                },
             },
             "candidates": candidates_plan,
             "primary_metric": primary_metric,
@@ -221,6 +327,7 @@ def tabular_result(frame, profile, config, progress, primary_metric):
                 }
                 for spec in eligible_specs
             },
+            "confirmation_seed": confirmation_seed,
         }
     )
     _publish(
@@ -290,6 +397,7 @@ def tabular_result(frame, profile, config, progress, primary_metric):
             progress,
             completed_units,
             total_units,
+            live_dir,
         )
         completed_units += candidate["completed_unit_count"]
         candidates.append(candidate)
@@ -320,6 +428,116 @@ def tabular_result(frame, profile, config, progress, primary_metric):
     decision = select_candidate(
         candidates, baseline_id, primary_metric, direction, target_scale=target_scale
     )
+    decision["metric_trajectories"] = {
+        candidate["candidate_id"]: metric_trajectory(
+            problem,
+            prediction_sets.get(candidate["candidate_id"], []),
+            prediction_sets.get(baseline_id, []),
+            [unit["unit_id"] for unit in plan_units],
+            primary_metric,
+            class_labels,
+        )
+        for candidate in candidates
+        if candidate["status"] == "completed"
+    }
+    provisional_id = decision["selected_candidate_id"]
+    provisional_spec = next(spec for spec in candidate_specs if spec.model_id == provisional_id)
+    baseline_spec = next(spec for spec in candidate_specs if spec.model_id == baseline_id)
+    _publish(
+        progress,
+        "primary_selection_completed",
+        "compare",
+        decision["reason_code"],
+        completed_units,
+        total_units,
+        selection_decision=decision,
+    )
+
+    confirmation = {
+        "status": "not_run",
+        "policy_version": "selection-confirmation-1.0",
+        "reason_code": (
+            "PROVISIONAL_SELECTION_IS_BASELINE"
+            if provisional_id == baseline_id
+            else confirmation_reason or "CONFIRMATION_NOT_AVAILABLE"
+        ),
+        "uses_holdout": False,
+        "seed": confirmation_seed,
+    }
+    if provisional_id != baseline_id and confirmation_splits:
+        confirmation_total = total_units + (2 * len(confirmation_splits))
+        _publish(
+            progress,
+            "confirmation_started",
+            "confirmation",
+            "CONFIRMATION_STARTED",
+            completed_units,
+            confirmation_total,
+            provisional_candidate_id=provisional_id,
+            baseline_candidate_id=baseline_id,
+            split_count=len(confirmation_splits),
+        )
+        try:
+            confirmation = evaluate_tabular_confirmation(
+                baseline_spec,
+                provisional_spec,
+                x_dev,
+                y_dev,
+                confirmation_splits,
+                confirmation_units,
+                problem,
+                primary_metric,
+                class_labels,
+                confirmation_seed,
+                budget["fit_seconds"],
+                progress,
+                completed_units,
+                confirmation_total,
+                target_scale,
+                live_dir,
+            )
+            completed_units += 2 * len(confirmation_splits)
+            total_units = confirmation_total
+        except FitTimedOut:
+            confirmation = {
+                **confirmation,
+                "status": "not_confirmed",
+                "reason_code": "CONFIRMATION_TIMEOUT",
+            }
+        except Exception as exc:
+            confirmation = {
+                **confirmation,
+                "status": "not_confirmed",
+                "reason_code": "CONFIRMATION_FAILED",
+                "failure_type": type(exc).__name__,
+            }
+        _publish(
+            progress,
+            "confirmation_completed",
+            "confirmation",
+            confirmation["reason_code"],
+            completed_units,
+            total_units,
+            confirmation=confirmation,
+        )
+    decision = {
+        **decision,
+        "provisional_selected_candidate_id": provisional_id,
+        "confirmation_status": confirmation["status"],
+        "confirmation_reason_code": confirmation["reason_code"],
+    }
+    if confirmation["status"] == "not_confirmed":
+        decision.update(
+            {
+                "selected_candidate_id": baseline_id,
+                "model_id": baseline_id,
+                "reason_code": "GAIN_NOT_REPEATED_IN_CONFIRMATION",
+                "reason": (
+                    "La mejora inicial no volvió a aparecer con suficiente consistencia en una "
+                    "segunda separación. Conservamos la referencia más sencilla."
+                ),
+            }
+        )
     selected_id = decision["selected_candidate_id"]
     selected = next(
         candidate for candidate in candidates if candidate["candidate_id"] == selected_id
@@ -333,6 +551,7 @@ def tabular_result(frame, profile, config, progress, primary_metric):
         completed_units,
         total_units,
         selection_decision=decision,
+        confirmation=confirmation,
     )
 
     final_test = None
@@ -384,19 +603,9 @@ def tabular_result(frame, profile, config, progress, primary_metric):
         )
         for evidence in sorted(selected_evidence, key=lambda item: item["position"])
     ] + test_predictions
-    diagnostics = (
-        classification_diagnostics(
-            [item["actual"] for item in selected_evidence],
-            [item["predicted"] for item in selected_evidence],
-            class_labels,
-        )
-        if problem == "classification"
-        else {}
-    )
-    if (
-        problem == "classification"
-        and primary_metric == "accuracy"
-        and any(item["recall"] == 0 for item in diagnostics.get("per_class", []))
+    diagnostics = live_preview_diagnostics(problem, selected_evidence, class_labels)
+    if problem == "classification" and any(
+        item["support"] >= 5 and item["recall"] == 0 for item in diagnostics.get("per_class", [])
     ):
         diagnostics["warnings"] = ["CLASS_WITH_ZERO_RECALL"]
     result = build_result(
@@ -414,6 +623,7 @@ def tabular_result(frame, profile, config, progress, primary_metric):
         final_test,
         explanation_scope,
         started,
+        confirmation=confirmation,
     )
     _publish(
         progress,
@@ -490,6 +700,179 @@ def tabular_splits(y, groups, problem, seed):
     return [], "stratified_group_kfold", "NO_FEASIBLE_CLASS_SPLITS"
 
 
+def tabular_confirmation_splits(y, groups, problem, root_seed, depth):
+    """Build the single frozen secondary check without touching the holdout."""
+    seed = stable_seed(root_seed, "selection-confirmation", problem)
+    if depth != "recommended":
+        return [], "DEPTH_NOT_RECOMMENDED", seed
+    if problem == "regression":
+        if len(y) < 80:
+            return [], "NEEDS_80_DEVELOPMENT_ROWS", seed
+        if len(set(groups)) < 4:
+            return [], "NEEDS_4_INDEPENDENT_ROW_GROUPS", seed
+        raw = list(
+            GroupKFold(n_splits=3, shuffle=True, random_state=seed).split(
+                np.arange(len(y)), groups=groups
+            )
+        )
+    else:
+        counts = pd.Series(y).value_counts()
+        if len(y) < 100:
+            return [], "NEEDS_100_DEVELOPMENT_ROWS", seed
+        if counts.min() < 10:
+            return [], "NEEDS_10_CASES_PER_CLASS", seed
+        raw = list(
+            StratifiedGroupKFold(n_splits=3, shuffle=True, random_state=seed).split(
+                np.arange(len(y)), y, groups
+            )
+        )
+        if not all(
+            len(set(y.iloc[train])) == len(counts)
+            and len(set(y.iloc[validation])) == len(counts)
+            and not (set(groups[train]) & set(groups[validation]))
+            for train, validation in raw
+        ):
+            return [], "NO_FEASIBLE_CONFIRMATION_SPLITS", seed
+    return [(np.asarray(a), np.asarray(b)) for a, b in raw], None, seed
+
+
+def evaluate_tabular_confirmation(
+    baseline_spec,
+    provisional_spec,
+    x,
+    y,
+    splits,
+    units,
+    problem,
+    primary_metric,
+    class_labels,
+    seed,
+    fit_seconds,
+    progress,
+    completed_before,
+    total_units,
+    target_scale,
+    live_dir=None,
+):
+    evidence = {}
+    summaries = {}
+    for spec in (baseline_spec, provisional_spec):
+        rows = []
+        unit_metrics = []
+        _publish(
+            progress,
+            "confirmation_candidate_started",
+            "confirmation",
+            "CONFIRMATION_CANDIDATE_STARTED",
+            completed_before,
+            total_units,
+            candidate_id=spec.model_id,
+            display_name=spec.display_name,
+        )
+        for unit_index, ((train, validation), unit) in enumerate(
+            zip(splits, units, strict=True), 1
+        ):
+            with fit_deadline(fit_seconds):
+                predicted = fit_tabular(
+                    spec,
+                    x.iloc[train],
+                    y.iloc[train],
+                    x.iloc[validation],
+                    stable_seed(seed, spec.model_id, unit["unit_id"]),
+                    problem,
+                )
+            actual = y.iloc[validation].to_numpy()
+            validate_tabular_predictions(actual, predicted, problem, class_labels)
+            metrics = metric_set(problem, actual, predicted, "selection_confirmation", class_labels)
+            primary = metric_value(metrics, primary_metric)
+            unit_metrics.append(
+                {
+                    "unit_id": unit["unit_id"],
+                    "primary_value": primary,
+                    "metrics": metrics,
+                    "n_predictions": len(validation),
+                }
+            )
+            rows.extend(
+                {
+                    "actual": json_value(actual_value),
+                    "predicted": json_value(predicted_value),
+                    "unit_id": unit["unit_id"],
+                    "row_id": row_id,
+                }
+                for actual_value, predicted_value, row_id in zip(
+                    actual, predicted, unit["validation_row_ids"], strict=True
+                )
+            )
+            cumulative = metric_set(
+                problem,
+                [item["actual"] for item in rows],
+                [item["predicted"] for item in rows],
+                "selection_confirmation_partial",
+                class_labels,
+            )
+            preview_ref = publish_live_preview(
+                live_dir,
+                spec.model_id,
+                unit["unit_id"],
+                "selection_confirmation",
+                rows,
+                cumulative,
+                metrics,
+                diagnostics=live_preview_diagnostics(problem, rows, class_labels),
+            )
+            _publish(
+                progress,
+                "confirmation_unit_completed",
+                "confirmation",
+                "CONFIRMATION_UNIT_COMPLETED",
+                completed_before + unit_index,
+                total_units,
+                candidate_id=spec.model_id,
+                unit_id=unit["unit_id"],
+                evaluation_role="selection_confirmation",
+                partial_metrics=cumulative,
+                unit_metrics=metrics,
+                **(preview_ref or {}),
+            )
+        combined = metric_set(
+            problem,
+            [item["actual"] for item in rows],
+            [item["predicted"] for item in rows],
+            "selection_confirmation",
+            class_labels,
+        )
+        summaries[spec.model_id] = {
+            "candidate_id": spec.model_id,
+            "display_name": spec.display_name,
+            "primary_value": metric_value(combined, primary_metric),
+            "metrics": combined,
+            "unit_metrics": unit_metrics,
+        }
+        evidence[spec.model_id] = rows
+        completed_before += len(splits)
+    baseline = summaries[baseline_spec.model_id]
+    provisional = summaries[provisional_spec.model_id]
+    gate = confirmation_gate(
+        baseline["primary_value"],
+        provisional["primary_value"],
+        [item["primary_value"] for item in baseline["unit_metrics"]],
+        [item["primary_value"] for item in provisional["unit_metrics"]],
+        primary_metric,
+        SUPPORTED_PRIMARY[problem][primary_metric],
+        target_scale,
+    )
+    return {
+        **gate,
+        "policy_version": "selection-confirmation-1.0",
+        "seed": seed,
+        "uses_holdout": False,
+        "split_count": 3,
+        "baseline": baseline,
+        "provisional_selected": provisional,
+    }
+
+
 def candidate_ineligibility(spec, features, shortest_train, reference_only):
     if reference_only and spec.uses_features:
         return "ONLY_REFERENCE_RECOMMENDED_FOR_TINY_SAMPLE"
@@ -515,6 +898,7 @@ def evaluate_tabular_candidate(
     progress,
     completed_before,
     total_units,
+    live_dir=None,
 ):
     candidate = candidate_shell(spec, "running")
     evidence = []
@@ -584,6 +968,16 @@ def evaluate_tabular_candidate(
                 "selection_partial",
                 class_labels,
             )
+            preview_ref = publish_live_preview(
+                live_dir,
+                spec.model_id,
+                unit["unit_id"],
+                "selection",
+                evidence,
+                cumulative_metrics,
+                metrics,
+                diagnostics=live_preview_diagnostics(problem, evidence, class_labels),
+            )
             _publish(
                 progress,
                 "unit_completed",
@@ -596,7 +990,7 @@ def evaluate_tabular_candidate(
                 evaluation_role="selection",
                 partial_metrics=cumulative_metrics,
                 unit_metrics=metrics,
-                preview=evidence[-min(200, len(validation)) :],
+                **(preview_ref or {}),
             )
         combined = metric_set(
             problem,
@@ -789,6 +1183,122 @@ def evaluate_tabular_holdout(
     return results, rows
 
 
+def forecast_horizon_diagnostics(selected_rows, baseline_rows, horizon):
+    by_selected = {step: [] for step in range(1, horizon + 1)}
+    by_baseline = {step: [] for step in range(1, horizon + 1)}
+    for item in selected_rows:
+        by_selected[int(item["horizon"])].append(item)
+    for item in baseline_rows:
+        by_baseline[int(item["horizon"])].append(item)
+    rows = []
+    relative_values = []
+    worse_over_ten = 0
+    better = similar = worse = 0
+    for step in range(1, horizon + 1):
+        selected = by_selected[step]
+        baseline = by_baseline[step]
+        if not selected or len(selected) != len(baseline):
+            continue
+        actual = [item["actual"] for item in selected]
+        selected_metrics = regression_metrics(
+            actual, [item["predicted"] for item in selected], "forecast_horizon"
+        )
+        baseline_metrics = regression_metrics(
+            actual, [item["predicted"] for item in baseline], "forecast_horizon"
+        )
+        selected_mae = metric_value(selected_metrics, "mae")
+        baseline_mae = metric_value(baseline_metrics, "mae")
+        selected_rmse = metric_value(selected_metrics, "rmse")
+        baseline_rmse = metric_value(baseline_metrics, "rmse")
+        epsilon = max(1e-12, abs(float(baseline_mae)) * 1e-12)
+        relative = (
+            (baseline_mae - selected_mae) / abs(baseline_mae)
+            if abs(baseline_mae) > epsilon
+            else None
+        )
+        difference = selected_mae - baseline_mae
+        if difference < -epsilon:
+            outcome = "better"
+            better += 1
+        elif difference > epsilon:
+            outcome = "worse"
+            worse += 1
+        else:
+            outcome = "similar"
+            similar += 1
+        if relative is not None:
+            relative_values.append(relative)
+            if relative < -0.10:
+                worse_over_ten += 1
+        rows.append(
+            {
+                "horizon": step,
+                "n_predictions": len(selected),
+                "selected_mae": selected_mae,
+                "selected_rmse": selected_rmse,
+                "baseline_mae": baseline_mae,
+                "baseline_rmse": baseline_rmse,
+                "mae_difference": difference,
+                "relative_improvement": relative,
+                "outcome": outcome,
+            }
+        )
+    evaluated = len(rows)
+    varies = bool(evaluated and worse_over_ten >= math.ceil(evaluated / 3))
+    return {
+        "policy_version": "forecast-horizon-stability-1.0",
+        "descriptive_only": True,
+        "does_not_change_selection": True,
+        "horizons_evaluated": evaluated,
+        "horizons_better_than_baseline": better,
+        "horizons_similar": similar,
+        "horizons_worse": worse,
+        "best_relative_improvement": max(relative_values) if relative_values else None,
+        "worst_relative_degradation": (
+            abs(min(relative_values)) if relative_values and min(relative_values) < 0 else 0.0
+        ),
+        "warning_code": "HORIZON_PERFORMANCE_VARIES" if varies else None,
+        "warning_threshold": 0.10,
+        "rows": rows,
+    }
+
+
+def metric_trajectory(
+    problem, candidate_rows, baseline_rows, unit_ids, primary_metric, labels=None
+):
+    points = []
+    included = set()
+    for index, unit_id in enumerate(unit_ids[:50], 1):
+        included.add(unit_id)
+        candidate = [item for item in candidate_rows if item.get("unit_id") in included]
+        baseline = [item for item in baseline_rows if item.get("unit_id") in included]
+        if not candidate or not baseline:
+            continue
+        candidate_metrics = metric_set(
+            problem,
+            [item["actual"] for item in candidate],
+            [item["predicted"] for item in candidate],
+            "selection_trajectory",
+            labels,
+        )
+        baseline_metrics = metric_set(
+            problem,
+            [item["actual"] for item in baseline],
+            [item["predicted"] for item in baseline],
+            "selection_trajectory",
+            labels,
+        )
+        points.append(
+            {
+                "unit_number": index,
+                "unit_id": unit_id,
+                "candidate_value": metric_value(candidate_metrics, primary_metric),
+                "baseline_value": metric_value(baseline_metrics, primary_metric),
+            }
+        )
+    return points
+
+
 def fold_permutation_importance(
     x, y, features, splits, model_spec, problem, primary_metric, seed, progress
 ):
@@ -875,7 +1385,7 @@ def fold_permutation_importance(
     }
 
 
-def forecast_result(frame, profile, config, progress, primary_metric):
+def forecast_result(frame, profile, config, progress, primary_metric, live_dir=None):
     started = time.monotonic()
     target = config.get("target_column_id")
     date_col = config.get("date_column_id")
@@ -965,6 +1475,7 @@ def forecast_result(frame, profile, config, progress, primary_metric):
             "objective": config["goal"],
             "problem_type": "forecasting",
             "target_column_id": target,
+            "target_display_name": column_name(profile, target),
             "date_column_id": date_col,
             "units": "target_unit",
             "eligible_population": {
@@ -1087,6 +1598,30 @@ def forecast_result(frame, profile, config, progress, primary_metric):
                     [item["predicted"] for item in evidence],
                     "selection_backtest_partial",
                 )
+                history_preview = [
+                    {
+                        "target_period": period.to_timestamp().date().isoformat(),
+                        "actual": float(value),
+                    }
+                    for period, value in zip(dates[:origin], values[:origin], strict=True)
+                ]
+                if len(history_preview) > 500:
+                    sample_indices = np.linspace(0, len(history_preview) - 1, 500, dtype=int)
+                    history_preview = [history_preview[int(index)] for index in sample_indices]
+                preview_ref = publish_live_preview(
+                    live_dir,
+                    spec.model_id,
+                    unit["unit_id"],
+                    "selection_backtest",
+                    unit_evidence,
+                    cumulative,
+                    metrics,
+                    training_end=str(dates[origin - 1]),
+                    training_history=history_preview,
+                    diagnostics=live_preview_diagnostics(
+                        "regression", evidence, include_horizons=True
+                    ),
+                )
                 _publish(
                     progress,
                     "unit_completed",
@@ -1099,8 +1634,8 @@ def forecast_result(frame, profile, config, progress, primary_metric):
                     evaluation_role="selection_backtest",
                     partial_metrics=cumulative,
                     unit_metrics=metrics,
-                    preview=unit_evidence,
                     training_end=str(dates[origin - 1]),
+                    **(preview_ref or {}),
                 )
             combined = regression_metrics(
                 [item["actual"] for item in evidence],
@@ -1181,6 +1716,17 @@ def forecast_result(frame, profile, config, progress, primary_metric):
         target_scale=target_scale,
         methodology_blocked=k < 3,
     )
+    decision["metric_trajectories"] = {
+        candidate["candidate_id"]: metric_trajectory(
+            "regression",
+            prediction_sets.get(candidate["candidate_id"], []),
+            prediction_sets.get(baseline["candidate_id"], []),
+            [unit["unit_id"] for unit in unit_plan],
+            primary_metric,
+        )
+        for candidate in candidates
+        if candidate["status"] == "completed"
+    }
     selected_id = decision["selected_candidate_id"]
     selected = next(item for item in candidates if item["candidate_id"] == selected_id)
     selected_spec = next(item for item in forecast_catalog if item.model_id == selected_id)
@@ -1322,6 +1868,9 @@ def forecast_result(frame, profile, config, progress, primary_metric):
         }
         for index, (period, value) in enumerate(zip(future_dates, future, strict=True), 1)
     ]
+    horizon_stability = forecast_horizon_diagnostics(
+        prediction_sets[selected_id], prediction_sets[baseline_spec.model_id], horizon
+    )
     diagnostics = {
         "frequency": "monthly",
         "aggregation": aggregation or "one_observation_per_month",
@@ -1335,6 +1884,8 @@ def forecast_result(frame, profile, config, progress, primary_metric):
         },
         "forecast_generation_failure": forecast_failure,
         "technical_fallback_candidate_id": fallback_candidate_id,
+        "forecast_horizon_stability": horizon_stability,
+        "warnings": (["HORIZON_PERFORMANCE_VARIES"] if horizon_stability["warning_code"] else []),
     }
     result = build_result(
         profile,
@@ -1365,7 +1916,13 @@ def forecast_result(frame, profile, config, progress, primary_metric):
         "horizon": horizon,
         "future_period_count": len(future_rows),
         "failure": forecast_failure,
+        "horizon_diagnostics": horizon_stability["rows"],
+        "horizon_stability": horizon_stability,
     }
+    if horizon_stability["warning_code"]:
+        result["limitations"].append(
+            "El desempeño cambia según cuántos meses intentamos mirar hacia adelante."
+        )
     _publish(
         progress,
         "snapshot_frozen",
@@ -1459,6 +2016,7 @@ def build_result(
     final_test=None,
     explanation_scope=None,
     started=None,
+    confirmation=None,
 ):
     baseline_id = decision["baseline_candidate_id"]
     baseline = next(item for item in candidates if item["candidate_id"] == baseline_id)
@@ -1483,6 +2041,10 @@ def build_result(
     if profile.get("duplicate_count", 0):
         limitations.append(
             "Las filas exactamente duplicadas se conservaron y se mantuvieron juntas al partir los datos."
+        )
+    if confirmation and confirmation.get("status") == "not_confirmed":
+        limitations.append(
+            "La mejora inicial no se repitió con suficiente consistencia en la comprobación adicional."
         )
     if final_test and not final_test.get("selection_improvement_repeated", True):
         limitations.append("La mejora de selección no se repitió en la prueba reservada.")
@@ -1510,7 +2072,17 @@ def build_result(
         "validation_plan": {
             **plan["validation"],
             "strategy": evidence,
-            "evidence_mode": ("selection_plus_reserved_test" if final_test else "selection_only"),
+            "evidence_mode": (
+                "selection_confirmation_and_reserved_test"
+                if confirmation
+                and confirmation.get("status") in {"confirmed", "not_confirmed"}
+                and final_test
+                else "selection_plus_confirmation"
+                if confirmation and confirmation.get("status") in {"confirmed", "not_confirmed"}
+                else "selection_plus_reserved_test"
+                if final_test
+                else "selection_only"
+            ),
             "population_scope": (
                 "independent_records"
                 if config["problem_type"] != "forecasting"
@@ -1530,6 +2102,12 @@ def build_result(
         ],
         "candidates": candidates,
         "selection_decision": decision,
+        "confirmation": confirmation
+        or {
+            "status": "not_run",
+            "reason_code": "NOT_APPLICABLE",
+            "uses_holdout": False,
+        },
         "evaluation_metrics": selected["selection_metrics"],
         "unit_metrics": selected.get("unit_metrics", []),
         "final_test": final_test,
@@ -1719,4 +2297,9 @@ def plan_summary(plan):
         "reserved_test": bool(
             validation.get("holdout_row_ids") or validation.get("reserved_test_periods")
         ),
+        "baseline_candidate_id": plan.get("baseline_candidate_id"),
+        "baseline_candidate_ids": plan.get("baseline_candidate_ids", []),
+        "target_column_id": plan.get("target_column_id"),
+        "target_display_name": plan.get("target_display_name"),
+        "units": plan.get("units"),
     }

@@ -1,7 +1,7 @@
 {
   "name": "local-ml-lab-frontend",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.7.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
@@ -20,6 +20,7 @@
     "react-router-dom": "7.18.4"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.10.2",
     "@eslint/js": "9.35.0",
     "@playwright/test": "1.63.0",
     "@testing-library/jest-dom": "6.8.0",

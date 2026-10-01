@@ -1,4 +1,4 @@
-# Laboratorio ML · v0.6.0000
+# Laboratorio ML · v0.7.0000
 
 ¿Tienes un Excel y quieres probar machine learning, pero no sabes por dónde empezar?
 
@@ -13,8 +13,8 @@ La identidad visual (símbolo, variantes y tamaños de uso), los tokens y el est
 - Explorar Excel (.xlsx), CSV y Parquet con tipos primitivos. Excel es el camino principal.
 - Crear versiones preparadas auditables con un editor guiado por columna, preview antes/después, filas apartadas y receta reutilizable.
 - Estimar un valor, predecir categorías o pronosticar una serie mensual regular.
-- Comparar referencias simples, modelos lineales y árboles con splits congelados y una política conservadora.
-- Observar candidatos, métricas y gráficos reales por evaluación mientras el run continúa.
+- Comparar referencias simples, modelos lineales y árboles con particiones congeladas, confirmación secundaria cuando aplica y una política conservadora.
+- Observar candidatos, métricas, trayectorias y gráficos reales por evaluación mientras el run continúa; después se puede reproducir el recorrido sin reentrenar.
 - Revisar calidad, exclusiones, métricas, candidatos fallidos y límites.
 - Exportar Excel, PDF y contexto TXT/Markdown/JSON para cualquier IA.
 - Reabrir el historial persistente después de reiniciar.
@@ -25,7 +25,13 @@ Capturas tomadas de la instalación Docker verificada, sin mockups:
 
 ![Inicio de Laboratorio ML](docs/screenshots/home.png)
 
+![Preparación guiada de columnas](docs/screenshots/preparation.png)
+
+![Análisis LIVE con evidencia persistida](docs/screenshots/live-analysis.png)
+
 ![Resultado real de regresión](docs/screenshots/regression-result.png)
+
+![Resultado real de pronóstico](docs/screenshots/forecast-result.png)
 
 ![Inicio móvil de Laboratorio ML](docs/screenshots/mobile-home.png)
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 
-POLICY_VERSION = "selection-policy-2.0"
+POLICY_VERSION = "selection-policy-2.1"
 
 
 def thresholds(
@@ -21,6 +21,52 @@ def thresholds(
 
 def oriented_improvement(candidate: float, baseline: float, direction: str) -> float:
     return candidate - baseline if direction == "max" else baseline - candidate
+
+
+def confirmation_gate(
+    baseline_value,
+    provisional_value,
+    baseline_units,
+    provisional_units,
+    metric_id,
+    direction,
+    target_scale=1.0,
+):
+    paired = [
+        oriented_improvement(candidate, baseline, direction)
+        for candidate, baseline in zip(provisional_units, baseline_units, strict=True)
+        if candidate is not None and baseline is not None
+    ]
+    _, minimum_gain, epsilon = thresholds(metric_id, baseline_value, target_scale)
+    joint_gain = (
+        oriented_improvement(provisional_value, baseline_value, direction)
+        if provisional_value is not None and baseline_value is not None
+        else None
+    )
+    wins = sum(value > epsilon for value in paired)
+    median = float(sorted(paired)[len(paired) // 2]) if paired else None
+    confirmed = (
+        joint_gain is not None
+        and joint_gain + epsilon >= minimum_gain
+        and len(paired) >= 3
+        and wins >= 2
+        and median is not None
+        and median > epsilon
+    )
+    return {
+        "status": "confirmed" if confirmed else "not_confirmed",
+        "joint_improvement": joint_gain,
+        "minimum_practical_gain": minimum_gain,
+        "paired_improvements": paired,
+        "won_pairs": wins,
+        "required_wins": 2,
+        "median_paired_improvement": median,
+        "reason_code": (
+            "GAIN_REPEATED_IN_CONFIRMATION"
+            if confirmed
+            else "GAIN_NOT_REPEATED_IN_CONFIRMATION"
+        ),
+    }
 
 
 def _score_key(candidate: dict, direction: str) -> tuple:
