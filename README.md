@@ -49,6 +49,25 @@ Abre [http://localhost:3000](http://localhost:3000). No hace falta `.env` ni Ope
 
 En Windows también puedes ejecutar `powershell -ExecutionPolicy Bypass -File scripts/setup.ps1`. El script no cambia la política global.
 
+## Instalación asistida por IA
+
+Puedes pedirle a tu asistente de IA (Claude, ChatGPT, Codex, Gemini…) que obtenga este repositorio y lo ponga a funcionar. Pásale la URL del repo y el prompt de abajo; con ese prompt y este README tiene todo lo necesario.
+
+Qué debe hacer, en orden:
+
+1. Verificar Docker Desktop/Engine con Compose v2, el puerto 3000 libre y al menos 4 GiB disponibles para construir.
+2. Ejecutar `docker compose up --build -d` sin crear `.env` salvo que quieras cambiar los valores por defecto.
+3. Esperar a que `docker compose ps` muestre frontend, API, worker y queue saludables.
+4. Ejecutar `python3 scripts/smoke.py`: recorre regresión, clasificación y pronóstico, y abre las descargas XLSX/PDF con datos sintéticos.
+5. Abrir `http://localhost:3000`. No se necesita OpenAI ni ninguna API key.
+6. Conservar el volumen de datos existente y no alterar el código salvo compatibilidad necesaria, explicando cualquier cambio.
+
+Al terminar debe informar `status`, `app_url`, `services_checked`, `smoke_result`, `changes_made`, `limitations` y `next_action`, sin decir «saludable» si solo validó Compose. Si una encolación falla, la API responde `503` con el `job_id`; el outbox SQLite la recupera cuando vuelve la cola, y no debe borrar volúmenes para resolverlo. Para una validación más completa también existen `python3 scripts/cancel_smoke.py` y `scripts/recovery_smoke.py`.
+
+Prompt para tu asistente:
+
+> Obtén este repositorio usando la URL que acompaña esta solicitud. Lee el README completo y sigue la sección «Instalación asistida por IA». Instálalo con Docker Compose. Verifica la API, el worker, la cola y el frontend. Ejecuta el smoke test sintético pequeño. Abre la aplicación en localhost si tu entorno lo permite. No necesitas configurar OpenAI. Conserva los datos existentes. No cambies el código salvo que sea necesario para compatibilidad y explica cualquier cambio. Si Docker no está instalado, indícame los pasos oficiales necesarios. Al terminar, informa la URL, el estado real de los servicios, las pruebas ejecutadas y cualquier limitación.
+
 ## Flujo de uso
 
 1. Sube tu Excel o archivo de datos, o elige uno de los seis ejemplos sintéticos.
@@ -126,11 +145,7 @@ El Home, el primer paso y la sección [Guía](http://localhost:3000/guide#datase
 
 ## Diagnóstico, desarrollo y contribución
 
-Ejecuta `scripts/doctor.ps1` o `scripts/doctor.sh`. Para comandos de desarrollo, invariantes y pruebas, consulta [AGENTS.md](AGENTS.md), [AI_SETUP](docs/AI_SETUP.md), [TESTING](docs/TESTING.md) y [TROUBLESHOOTING](docs/TROUBLESHOOTING.md). Contribuciones siguen [CONTRIBUTING.md](CONTRIBUTING.md). Licencia MIT para el código original; dependencias conservan sus licencias.
-
-Prompt para asistencia:
-
-> Obtén este repositorio usando la URL que acompaña esta solicitud. Lee AGENTS.md y docs/AI_SETUP.md. Instálalo con Docker Compose. Verifica la API, el worker, la cola y el frontend. Ejecuta el smoke test sintético pequeño. Abre la aplicación en localhost si tu entorno lo permite. No necesitas configurar OpenAI. Conserva los datos existentes. No cambies el código salvo que sea necesario para compatibilidad y explica cualquier cambio. Si Docker no está instalado, indícame los pasos oficiales necesarios. Al terminar, informa la URL, el estado real de los servicios, las pruebas ejecutadas y cualquier limitación.
+Ejecuta `scripts/doctor.ps1` o `scripts/doctor.sh`. Para instalación y pruebas, consulta [SETUP](docs/SETUP.md), [TESTING](docs/TESTING.md) y [TROUBLESHOOTING](docs/TROUBLESHOOTING.md). Las contribuciones siguen [CONTRIBUTING.md](CONTRIBUTING.md). Licencia MIT para el código original; dependencias conservan sus licencias.
 
 ## Plataformas verificadas
 
