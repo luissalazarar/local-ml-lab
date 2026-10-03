@@ -51,22 +51,23 @@ En Windows también puedes ejecutar `powershell -ExecutionPolicy Bypass -File sc
 
 ## Instalación asistida por IA
 
-Puedes pedirle a tu asistente de IA (Claude, ChatGPT, Codex, Gemini…) que obtenga este repositorio y lo ponga a funcionar. Pásale la URL del repo y el prompt de abajo; con ese prompt y este README tiene todo lo necesario.
+Puedes pedirle a tu asistente de IA (Claude, ChatGPT, Codex, Gemini…) que obtenga este repositorio y lo deje funcionando. Pásale la URL del repo y el prompt de abajo. **No necesitas tener nada instalado de antemano**: el asistente revisa qué falta y te lo pide.
 
 Qué debe hacer, en orden:
 
-1. Verificar Docker Desktop/Engine con Compose v2 (si falta, guiar la instalación oficial: https://docs.docker.com/get-started/get-docker/), el puerto 3000 libre y al menos 4 GiB disponibles para construir. Si el puerto 3000 está ocupado, usar otro con `APP_PORT=3400 docker compose up --build -d` y emplear esa URL en los pasos siguientes.
-2. Ejecutar `docker compose up --build -d` sin crear `.env` salvo que quieras cambiar los valores por defecto.
-3. Esperar a que `docker compose ps` muestre frontend, API, worker y queue saludables.
-4. Ejecutar `python3 scripts/smoke.py` (solo usa la librería estándar de Python 3): recorre regresión, clasificación y pronóstico, y abre las descargas XLSX/PDF con datos sintéticos. Con otro puerto: `APP_URL=http://localhost:3400 python3 scripts/smoke.py`. Si el equipo no tiene Python, se puede correr dentro de Docker (macOS/Linux): `docker compose exec -T -e APP_URL=http://localhost:8000 api python - < scripts/smoke.py`.
-5. Abrir `http://localhost:3000`. No se necesita OpenAI ni ninguna API key.
-6. Conservar el volumen de datos existente y no alterar el código salvo compatibilidad necesaria, explicando cualquier cambio.
+1. **Revisar el equipo y pedirte lo que falte.** Comprobar el sistema operativo y si están disponibles `git`, Docker (Desktop o Engine) con Compose v2 **y en ejecución** (`docker info` responde), al menos 4 GiB de memoria para Docker y el puerto 3000 libre. Python es opcional. Si falta algo, debe decirte exactamente qué es y de dónde obtenerlo, pedirte confirmación antes de instalar nada y usar solo instaladores oficiales (Docker: https://docs.docker.com/get-started/get-docker/ · Git: https://git-scm.com/downloads), nunca scripts remotos opacos. Si Docker Desktop está instalado pero cerrado, debe pedirte que lo abras y esperar a que arranque. Si no puede ejecutar comandos en tu equipo, te guía paso a paso y espera tu confirmación en cada uno. No debe continuar hasta que Docker funcione.
+2. Obtener el repositorio (`git clone`, o descargar el ZIP desde GitHub si no hay git).
+3. Ejecutar `docker compose up --build -d` sin crear `.env` salvo que quieras cambiar los valores por defecto; la primera vez descarga imágenes y puede tardar varios minutos. Si el puerto 3000 está ocupado, usar otro con `APP_PORT=3400 docker compose up --build -d` y emplear esa URL en los pasos siguientes.
+4. Esperar a que `docker compose ps` muestre frontend, API, worker y queue saludables.
+5. Ejecutar `python3 scripts/smoke.py` (solo usa la librería estándar de Python 3): recorre regresión, clasificación y pronóstico, y abre las descargas XLSX/PDF con datos sintéticos. Con otro puerto: `APP_URL=http://localhost:3400 python3 scripts/smoke.py`. Si el equipo no tiene Python, no hace falta instalarlo: se puede correr dentro de Docker (macOS/Linux): `docker compose exec -T -e APP_URL=http://localhost:8000 api python - < scripts/smoke.py`.
+6. Abrir `http://localhost:3000` (o el puerto elegido). No se necesita OpenAI ni ninguna API key.
+7. Conservar el volumen de datos existente y no alterar el código salvo compatibilidad necesaria, explicando cualquier cambio.
 
 Al terminar debe informar `status`, `app_url`, `services_checked`, `smoke_result`, `changes_made`, `limitations` y `next_action`, sin decir «saludable» si solo validó Compose. Si una encolación falla, la API responde `503` con el `job_id`; el outbox SQLite la recupera cuando vuelve la cola, y no debe borrar volúmenes para resolverlo. Para una validación más completa también existen `python3 scripts/cancel_smoke.py` y `scripts/recovery_smoke.py`.
 
 Prompt para tu asistente:
 
-> Obtén este repositorio usando la URL que acompaña esta solicitud. Lee el README completo y sigue la sección «Instalación asistida por IA». Instálalo con Docker Compose. Verifica la API, el worker, la cola y el frontend. Ejecuta el smoke test sintético pequeño. Abre la aplicación en localhost si tu entorno lo permite. No necesitas configurar OpenAI. Conserva los datos existentes. No cambies el código salvo que sea necesario para compatibilidad y explica cualquier cambio. Si Docker no está instalado, indícame los pasos oficiales necesarios. Al terminar, informa la URL, el estado real de los servicios, las pruebas ejecutadas y cualquier limitación.
+> Obtén este repositorio usando la URL que acompaña esta solicitud y déjalo funcionando en mi equipo, aunque yo no tenga nada instalado. Lee el README completo y sigue la sección «Instalación asistida por IA». Primero revisa qué tengo (git, Docker Desktop o Engine con Compose v2 y en ejecución, memoria disponible y el puerto 3000; Python es opcional) y pídeme lo que falte: dime exactamente qué instalar y desde dónde (solo instaladores oficiales), pídeme confirmación antes de instalar algo y, si no puedes ejecutar comandos en mi equipo, guíame paso a paso. Después instálalo con Docker Compose, verifica la API, el worker, la cola y el frontend, y ejecuta el smoke test sintético pequeño. Abre la aplicación en localhost si tu entorno lo permite. No necesitas configurar OpenAI. Conserva los datos existentes. No cambies el código salvo que sea necesario para compatibilidad y explica cualquier cambio. Al terminar, informa la URL, el estado real de los servicios, las pruebas ejecutadas y cualquier limitación.
 
 ## Flujo de uso
 
