@@ -55,10 +55,10 @@ Puedes pedirle a tu asistente de IA (Claude, ChatGPT, Codex, Gemini…) que obte
 
 Qué debe hacer, en orden:
 
-1. Verificar Docker Desktop/Engine con Compose v2, el puerto 3000 libre y al menos 4 GiB disponibles para construir.
+1. Verificar Docker Desktop/Engine con Compose v2 (si falta, guiar la instalación oficial: https://docs.docker.com/get-started/get-docker/), el puerto 3000 libre y al menos 4 GiB disponibles para construir. Si el puerto 3000 está ocupado, usar otro con `APP_PORT=3400 docker compose up --build -d` y emplear esa URL en los pasos siguientes.
 2. Ejecutar `docker compose up --build -d` sin crear `.env` salvo que quieras cambiar los valores por defecto.
 3. Esperar a que `docker compose ps` muestre frontend, API, worker y queue saludables.
-4. Ejecutar `python3 scripts/smoke.py`: recorre regresión, clasificación y pronóstico, y abre las descargas XLSX/PDF con datos sintéticos.
+4. Ejecutar `python3 scripts/smoke.py` (solo usa la librería estándar de Python 3): recorre regresión, clasificación y pronóstico, y abre las descargas XLSX/PDF con datos sintéticos. Con otro puerto: `APP_URL=http://localhost:3400 python3 scripts/smoke.py`. Si el equipo no tiene Python, se puede correr dentro de Docker (macOS/Linux): `docker compose exec -T -e APP_URL=http://localhost:8000 api python - < scripts/smoke.py`.
 5. Abrir `http://localhost:3000`. No se necesita OpenAI ni ninguna API key.
 6. Conservar el volumen de datos existente y no alterar el código salvo compatibilidad necesaria, explicando cualquier cambio.
 
