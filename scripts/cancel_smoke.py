@@ -1,4 +1,4 @@
-"""Comprueba cancelación acotada durante el último candidato con datos sintéticos."""
+"""Comprueba cancelación acotada durante un candidato costoso con datos sintéticos."""
 
 import csv
 import http.cookiejar
@@ -92,15 +92,25 @@ run = call(
 )
 deadline = time.time() + 120
 cancelled_stage = None
+after = 0
 while time.time() < deadline:
-    job = call(f"/jobs/{run['job_id']}")
-    live = call(f"/runs/{run['run_id']}/live")
-    candidate_id = live.get("active_candidate_id") or ""
-    if candidate_id.startswith("random_forest"):
-        cancelled_stage = candidate_id
+    events = call(f"/jobs/{run['job_id']}/events?after={after}&limit=50")["items"]
+    for event in events:
+        after = max(after, event["seq"])
+        payload = event.get("payload") or {}
+        candidate_id = payload.get("candidate_id") or ""
+        if event["event_type"] == "candidate_started" and candidate_id.startswith(
+            "extra_trees"
+        ):
+            cancelled_stage = candidate_id
+            break
+        if event["event_type"] in {"completed", "failed", "cancelled"}:
+            raise AssertionError(
+                "El job terminó antes de alcanzar un candidato costoso: "
+                + event["event_type"]
+            )
+    if cancelled_stage:
         break
-    if job["status"] in {"succeeded", "failed", "cancelled"}:
-        raise AssertionError(f"El job terminó antes de alcanzar el último candidato: {job}")
     time.sleep(0.05)
 assert cancelled_stage
 started = time.monotonic()

@@ -45,6 +45,30 @@ jobs:
       - run: npm run typecheck && npm run lint && npm run test -- --run && npm run build
         working-directory: frontend
 
+  windows-script:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate PowerShell entrypoints
+        shell: powershell
+        run: |
+          $failed = $false
+          foreach ($path in @('scripts/setup.ps1', 'scripts/doctor.ps1')) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $path),
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | Format-List
+              $failed = $true
+            }
+          }
+          if ($failed) { exit 1 }
+      - run: python scripts/check_version.py
+
   docker-smoke:
     runs-on: ubuntu-24.04
     timeout-minutes: 20

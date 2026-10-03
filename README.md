@@ -39,15 +39,21 @@ Capturas tomadas de la instalación Docker verificada, sin mockups:
 
 ## Quick start
 
-Requiere Docker Desktop/Engine con Compose v2 y al menos 4 GiB disponibles para la primera construcción.
+Requiere Docker Desktop/Engine con Compose v2 y al menos 4 GiB disponibles para la primera construcción. El instalador levanta los servicios y ejecuta una prueba sintética completa; Python y Node quedan dentro de Docker.
+
+macOS/Linux:
 
 ```bash
-docker compose up --build
+sh scripts/setup.sh
 ```
 
-Abre [http://localhost:3000](http://localhost:3000). No hace falta `.env` ni OpenAI. En segundo plano usa `docker compose up -d`; consulta estado con `docker compose ps`; apaga sin borrar datos con `docker compose down`.
+Windows PowerShell:
 
-En Windows también puedes ejecutar `powershell -ExecutionPolicy Bypass -File scripts/setup.ps1`. El script no cambia la política global.
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/setup.ps1
+```
+
+Abre [http://localhost:3000](http://localhost:3000). No hace falta `.env`, Python, Node ni OpenAI. Los scripts no cambian la política global de PowerShell ni borran datos. Consulta estado con `docker compose ps`; apaga sin borrar datos con `docker compose down`. Si el puerto 3000 está ocupado, define `APP_PORT` antes de ejecutar el instalador.
 
 ## Instalación asistida por IA
 
@@ -57,9 +63,9 @@ Qué debe hacer, en orden:
 
 1. **Revisar el equipo y pedirte lo que falte.** Comprobar el sistema operativo y si están disponibles `git`, Docker (Desktop o Engine) con Compose v2 **y en ejecución** (`docker info` responde), al menos 4 GiB de memoria para Docker y el puerto 3000 libre. Python es opcional. Si falta algo, debe decirte exactamente qué es y de dónde obtenerlo, pedirte confirmación antes de instalar nada y usar solo instaladores oficiales (Docker: https://docs.docker.com/get-started/get-docker/ · Git: https://git-scm.com/downloads), nunca scripts remotos opacos. Si Docker Desktop está instalado pero cerrado, debe pedirte que lo abras y esperar a que arranque. Si no puede ejecutar comandos en tu equipo, te guía paso a paso y espera tu confirmación en cada uno. No debe continuar hasta que Docker funcione.
 2. Obtener el repositorio (`git clone`, o descargar el ZIP desde GitHub si no hay git).
-3. Ejecutar `docker compose up --build -d` sin crear `.env` salvo que quieras cambiar los valores por defecto; la primera vez descarga imágenes y puede tardar varios minutos. Si el puerto 3000 está ocupado, usar otro con `APP_PORT=3400 docker compose up --build -d` y emplear esa URL en los pasos siguientes.
-4. Esperar a que `docker compose ps` muestre frontend, API, worker y queue saludables.
-5. Ejecutar `python3 scripts/smoke.py` (solo usa la librería estándar de Python 3): recorre regresión, clasificación y pronóstico, y abre las descargas XLSX/PDF con datos sintéticos. Con otro puerto: `APP_URL=http://localhost:3400 python3 scripts/smoke.py`. Si el equipo no tiene Python, no hace falta instalarlo: se puede correr dentro de Docker (macOS/Linux): `docker compose exec -T -e APP_URL=http://localhost:8000 api python - < scripts/smoke.py`.
+3. Ejecutar el instalador del Quick start (`sh scripts/setup.sh` en macOS/Linux o `powershell -ExecutionPolicy Bypass -File scripts/setup.ps1` en Windows). No crear `.env` salvo que quieras cambiar valores por defecto. Si el puerto 3000 está ocupado, definir antes otro puerto (`APP_PORT=3400` en macOS/Linux; `$env:APP_PORT=3400` en PowerShell). La primera construcción descarga imágenes y puede tardar varios minutos.
+4. Confirmar que el instalador termina con el smoke sintético en `healthy`; ese smoke recorre regresión, clasificación y pronóstico, abre XLSX/PDF y comprueba persistencia y ausencia de muestras privadas. Si falla, revisar `docker compose ps` y `docker compose logs --tail=100 api worker` sin borrar volúmenes.
+5. Ejecutar `docker compose ps` y comprobar frontend, API, worker y queue saludables. Python es opcional: los instaladores ejecutan el smoke dentro del contenedor API.
 6. Abrir `http://localhost:3000` (o el puerto elegido). No se necesita OpenAI ni ninguna API key.
 7. Conservar el volumen de datos existente y no alterar el código salvo compatibilidad necesaria, explicando cualquier cambio.
 
@@ -67,7 +73,7 @@ Al terminar debe informar `status`, `app_url`, `services_checked`, `smoke_result
 
 Prompt para tu asistente:
 
-> Obtén este repositorio usando la URL que acompaña esta solicitud y déjalo funcionando en mi equipo, aunque yo no tenga nada instalado. Lee el README completo y sigue la sección «Instalación asistida por IA». Primero revisa qué tengo (git, Docker Desktop o Engine con Compose v2 y en ejecución, memoria disponible y el puerto 3000; Python es opcional) y pídeme lo que falte: dime exactamente qué instalar y desde dónde (solo instaladores oficiales), pídeme confirmación antes de instalar algo y, si no puedes ejecutar comandos en mi equipo, guíame paso a paso. Después instálalo con Docker Compose, verifica la API, el worker, la cola y el frontend, y ejecuta el smoke test sintético pequeño. Abre la aplicación en localhost si tu entorno lo permite. No necesitas configurar OpenAI. Conserva los datos existentes. No cambies el código salvo que sea necesario para compatibilidad y explica cualquier cambio. Al terminar, informa la URL, el estado real de los servicios, las pruebas ejecutadas y cualquier limitación.
+> Obtén este repositorio usando la URL que acompaña esta solicitud y déjalo funcionando en mi equipo, aunque yo no tenga nada instalado. Lee el README completo y sigue la sección «Instalación asistida por IA». Primero revisa qué tengo (git, Docker Desktop o Engine con Compose v2 y en ejecución, memoria disponible y el puerto 3000; Python es opcional) y pídeme lo que falte: dime exactamente qué instalar y desde dónde (solo instaladores oficiales), pídeme confirmación antes de instalar algo y, si no puedes ejecutar comandos en mi equipo, guíame paso a paso. Después ejecuta el instalador del Quick start correspondiente a mi sistema; este debe construir Docker, verificar la API, el worker, la cola y el frontend, y terminar con el smoke sintético pequeño. Abre la aplicación en localhost si tu entorno lo permite. No necesitas configurar OpenAI. Conserva los datos existentes. No cambies el código salvo que sea necesario para compatibilidad y explica cualquier cambio. Al terminar, informa la URL, el estado real de los servicios, las pruebas ejecutadas y cualquier limitación.
 
 ## Flujo de uso
 

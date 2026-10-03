@@ -33,7 +33,7 @@ describe('contrato básico', () => {
     expect(brand.textContent).toBe('Laboratorio ML')
     expect(brand.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
     expect(author.contains(brand)).toBe(false)
-    expect(screen.getByText('v0.7.0001')).toBeTruthy()
+    expect(screen.getByText(`v${__DISPLAY_VERSION__}`)).toBeTruthy()
   })
 
   it('marca la sección activa en la navegación principal', async () => {
