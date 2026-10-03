@@ -5,7 +5,12 @@ import time
 
 import psutil
 
-from local_ml_lab.jobs import _reduce_live_state, terminate_process_tree
+from local_ml_lab.jobs import _error_code, _reduce_live_state, terminate_process_tree
+
+
+def test_value_error_uses_stable_domain_code():
+    assert _error_code(ValueError("MAX_ROWS_EXCEEDED")) == "MAX_ROWS_EXCEEDED"
+    assert _error_code(ValueError("detalle no público")) == "ValueError"
 
 
 def process_with_descendant():

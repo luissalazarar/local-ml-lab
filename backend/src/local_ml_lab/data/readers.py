@@ -1,4 +1,5 @@
 import csv
+import math
 import re
 import unicodedata
 from pathlib import Path
@@ -40,7 +41,7 @@ def inspect_file(path: Path) -> dict:
         result.update({"row_count": metadata.num_rows, "column_count": metadata.num_columns})
     else:
         encoding = _detect_encoding(path)
-        sample = path.read_bytes()[:65536].decode(encoding)
+        sample = _read_sample(path).decode(encoding)
         result.update(
             {
                 "encoding": encoding,
@@ -62,7 +63,7 @@ def read_frame(path: Path, options: dict | None = None) -> pd.DataFrame:
         encoding = options.get("encoding") or _detect_encoding(path)
         if encoding not in CSV_ENCODINGS:
             raise ValueError("UNSUPPORTED_CSV_ENCODING")
-        sample = path.read_bytes()[:65536].decode(encoding)
+        sample = _read_sample(path).decode(encoding)
         delimiter = options.get("delimiter") or _detect_delimiter(sample)
         if delimiter not in CSV_DELIMITERS:
             raise ValueError("UNSUPPORTED_CSV_DELIMITER")
@@ -161,6 +162,7 @@ def profile_frame(
                 "quality_issue_codes": issues,
             }
         )
+    visual_sample = _deterministic_sample(frame, settings.max_profile_sample_rows)
     return {
         "row_count": len(frame),
         "column_count": len(frame.columns),
@@ -168,7 +170,108 @@ def profile_frame(
         "sampled": sampled,
         "profile_sample_count": len(sample),
         "columns": columns,
+        "visualizations": _build_visualizations(visual_sample, columns, len(frame)),
     }
+
+
+def _deterministic_sample(frame: pd.DataFrame, limit: int) -> pd.DataFrame:
+    if len(frame) <= limit:
+        return frame
+    step = max(1, math.ceil(len(frame) / limit))
+    return frame.iloc[::step].head(limit)
+
+
+def _build_visualizations(frame: pd.DataFrame, columns: list[dict], total_rows: int) -> dict:
+    eligible = [
+        column
+        for column in columns
+        if column["inferred_semantic_type"] == "numeric"
+        and not column["possible_id"]
+        and column["configured_role"] == "variable"
+        and column["distinct_count"] > 1
+    ]
+    shown = eligible[:12]
+    ids = [column["column_id"] for column in shown]
+    names = {column["column_id"]: column["display_name"] for column in shown}
+    numeric = frame[ids].apply(pd.to_numeric, errors="coerce") if ids else pd.DataFrame()
+    numeric = numeric.replace([float("inf"), float("-inf")], float("nan"))
+
+    boxplots = []
+    for column_id in ids:
+        values = numeric[column_id].dropna().astype(float)
+        if values.empty:
+            continue
+        q1, median, q3 = (float(value) for value in values.quantile([0.25, 0.5, 0.75]))
+        iqr = q3 - q1
+        lower_bound, upper_bound = q1 - 1.5 * iqr, q3 + 1.5 * iqr
+        inside = values[(values >= lower_bound) & (values <= upper_bound)]
+        boxplots.append(
+            {
+                "column_id": column_id,
+                "display_name": names[column_id],
+                "minimum": _finite_or_none(inside.min() if not inside.empty else q1),
+                "q1": _finite_or_none(q1),
+                "median": _finite_or_none(median),
+                "q3": _finite_or_none(q3),
+                "maximum": _finite_or_none(inside.max() if not inside.empty else q3),
+                "outlier_count": int(((values < lower_bound) | (values > upper_bound)).sum()),
+                "n": len(values),
+            }
+        )
+
+    correlation_values: list[list[float | None]] = []
+    scatterplots = []
+    if len(ids) >= 2:
+        correlations = numeric.corr(method="pearson", min_periods=3)
+        correlation_values = [
+            [_finite_or_none(correlations.loc[row_id, column_id]) for column_id in ids]
+            for row_id in ids
+        ]
+        pairs = []
+        for left_index, left_id in enumerate(ids):
+            for right_id in ids[left_index + 1 :]:
+                correlation = _finite_or_none(correlations.loc[left_id, right_id])
+                if correlation is not None:
+                    pairs.append((abs(correlation), left_id, right_id, correlation))
+        for _, left_id, right_id, correlation in sorted(pairs, reverse=True)[:3]:
+            pair = numeric[[left_id, right_id]].dropna()
+            pair = _deterministic_sample(pair, 500)
+            scatterplots.append(
+                {
+                    "x_column_id": left_id,
+                    "x_display_name": names[left_id],
+                    "y_column_id": right_id,
+                    "y_display_name": names[right_id],
+                    "correlation": correlation,
+                    "points": [[float(left), float(right)] for left, right in pair.itertuples(index=False)],
+                }
+            )
+
+    return {
+        "sample_method": "deterministic_stride",
+        "sample_count": len(frame),
+        "source_row_count": total_rows,
+        "numeric_columns": [
+            {"column_id": column_id, "display_name": names[column_id]} for column_id in ids
+        ],
+        "correlation": {
+            "method": "pearson",
+            "column_ids": ids,
+            "display_names": [names[column_id] for column_id in ids],
+            "values": correlation_values,
+        },
+        "boxplots": boxplots,
+        "scatterplots": scatterplots,
+        "excluded_numeric_count": max(0, len(eligible) - len(shown)),
+    }
+
+
+def _finite_or_none(value) -> float | None:
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return None
+    return result if math.isfinite(result) else None
 
 
 def _validate_limits(frame: pd.DataFrame) -> None:
@@ -181,7 +284,7 @@ def _validate_limits(frame: pd.DataFrame) -> None:
 
 
 def _detect_encoding(path: Path) -> str:
-    sample = path.read_bytes()[:65536]
+    sample = _read_sample(path)
     for encoding in ("utf-8-sig", "utf-8"):
         try:
             sample.decode(encoding)
@@ -189,6 +292,11 @@ def _detect_encoding(path: Path) -> str:
         except UnicodeDecodeError:
             continue
     return "latin-1"
+
+
+def _read_sample(path: Path, size: int = 65536) -> bytes:
+    with Path(path).open("rb") as source:
+        return source.read(size)
 
 
 def _detect_delimiter(sample: str) -> str:

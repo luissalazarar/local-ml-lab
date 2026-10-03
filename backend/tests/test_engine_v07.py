@@ -87,6 +87,20 @@ def test_confirmation_support_is_not_relaxed():
     assert reason == "NEEDS_80_DEVELOPMENT_ROWS"
 
 
+def test_recommended_mode_can_select_a_nonlinear_family():
+    x = np.linspace(-4, 4, 240)
+    raw = pd.DataFrame({"x": x, "y": 120 * x**2 + 15 * np.sin(4 * x)})
+    frame, mapping = normalize_columns(raw)
+    result = analyze(frame, profile_frame(frame, mapping), _regression_config())
+
+    assert result["selection_decision"]["selected_candidate_id"] in {
+        "extra_trees_regressor",
+        "random_forest_regressor",
+    }
+    completed = {item["model_id"] for item in result["candidates"] if item["status"] == "completed"}
+    assert {"ridge", "extra_trees_regressor", "random_forest_regressor"} <= completed
+
+
 def test_live_preview_is_atomic_bounded_and_event_contains_only_reference(tmp_path):
     raw = pd.DataFrame({"x": np.arange(620, dtype=float), "y": 2 * np.arange(620, dtype=float) + 5})
     frame, mapping = normalize_columns(raw)

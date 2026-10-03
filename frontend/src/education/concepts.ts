@@ -5,6 +5,8 @@ export type Concept = {
   interpretation?: string
   direction?: 'higher' | 'lower' | 'none'
   range?: string
+  compareAgainst?: string
+  goodBad?: string
   warning?: string
 }
 
@@ -57,12 +59,12 @@ export const concepts: Record<string, Concept> = {
   encoding: { name: 'Encoding', short: 'Convierte categorías a una representación que el modelo puede usar.' },
   scaling: { name: 'Escalado', short: 'Ajusta la escala de números cuando el modelo lo necesita.' },
   class_weight: { name: 'Pesos de clase', short: 'Hace que ciertos errores cuesten más durante el entrenamiento.', warning: 'No crea filas ni ejemplos nuevos.' },
-  mae: { name: 'MAE', short: 'Error absoluto promedio. Está en la misma unidad del resultado.', direction: 'lower', interpretation: 'Más bajo es mejor.' },
-  rmse: { name: 'RMSE', short: 'Mide error y penaliza más los errores grandes.', direction: 'lower', interpretation: 'Más bajo es mejor.' },
-  r2: { name: 'R²', short: 'Compara el ajuste frente a una referencia basada en el promedio.', direction: 'higher', range: 'Puede ser negativo; 1 es ajuste perfecto en esos datos.', warning: 'No es un porcentaje de acierto.' },
-  accuracy: { name: 'Exactitud', short: 'Proporción total de predicciones correctas.', direction: 'higher', range: 'De 0 a 1.', warning: 'Puede engañar si una clase domina.' },
-  balanced_accuracy: { name: 'Exactitud balanceada', short: 'Calcula el acierto de cada clase y después los promedia.', direction: 'higher', range: 'De 0 a 1.', interpretation: 'Útil cuando las clases están desbalanceadas.' },
-  macro_f1: { name: 'F1 macro', short: 'Combina precisión y cobertura para cada categoría y da el mismo peso a todas.', extended: 'Si hay 90 casos A y 10 casos B, primero calcula F1 por separado para A y B. Luego promedia ambos resultados sin dejar que A domine solo por ser más frecuente.', direction: 'higher', range: 'Más alto es mejor · rango de 0 a 1.', interpretation: 'Ayuda a comprobar que el modelo no funcione bien solo para la clase mayoritaria.' },
+  mae: { name: 'MAE', short: 'Error absoluto promedio. Está en la misma unidad del resultado.', direction: 'lower', interpretation: 'Más bajo es mejor.', compareAgainst: 'Compáralo con el MAE de la referencia y con el error que sería tolerable en tu decisión real.', goodBad: 'No existe un MAE universalmente bueno: 10 puede ser pequeño para ventas mensuales y enorme para una medida entre 0 y 20.' },
+  rmse: { name: 'RMSE', short: 'Mide error en la unidad del resultado y castiga más los errores grandes.', direction: 'lower', interpretation: 'Más bajo es mejor.', compareAgainst: 'Compáralo con el RMSE de la referencia y con MAE: si RMSE es mucho mayor, algunos errores grandes están pesando bastante.', goodBad: 'Es útil si los errores grandes cuestan más, pero no tiene un umbral universal de bueno o malo.' },
+  r2: { name: 'R²', short: 'Compara el ajuste frente a predecir siempre el promedio.', direction: 'higher', range: 'Puede ser negativo; 0 equivale a la referencia del promedio y 1 es ajuste perfecto en esos datos.', compareAgainst: 'Su cero ya tiene una referencia concreta: predecir siempre el promedio. También conviene compararlo con el mismo modelo en otras particiones.', goodBad: 'Un valor positivo supera al promedio en esa evaluación; uno negativo rinde peor. Aun así, la utilidad depende del error en unidades reales y de su estabilidad.', warning: 'No es un porcentaje de acierto.' },
+  accuracy: { name: 'Exactitud', short: 'Proporción total de predicciones correctas.', direction: 'higher', range: 'De 0 a 1; por ejemplo, 0,80 significa 80 aciertos por cada 100 casos evaluados.', compareAgainst: 'Compárala con la clase frecuente y revisa además qué ocurrió en cada categoría.', goodBad: 'No hay un corte universal: el costo de cada error y el balance entre clases definen si sirve.', warning: 'Puede engañar si una clase domina.' },
+  balanced_accuracy: { name: 'Exactitud balanceada', short: 'Calcula el acierto de cada clase y después los promedia.', direction: 'higher', range: 'De 0 a 1.', interpretation: 'Más alto es mejor y cada clase pesa lo mismo.', compareAgainst: 'Compárala con la referencia y revisa el recall de cada clase para detectar categorías ignoradas.', goodBad: 'Un valor alto puede ocultar una clase problemática; la matriz de confusión completa la lectura.' },
+  macro_f1: { name: 'F1 macro', short: 'Combina precisión y cobertura para cada categoría y da el mismo peso a todas.', extended: 'Si hay 90 casos A y 10 casos B, primero calcula F1 por separado para A y B. Luego promedia ambos resultados sin dejar que A domine solo por ser más frecuente.', direction: 'higher', range: 'Más alto es mejor · rango de 0 a 1.', interpretation: 'Ayuda a comprobar que el modelo no funcione bien solo para la clase mayoritaria.', compareAgainst: 'Compáralo con la referencia y revisa precisión, recall y soporte por categoría.', goodBad: 'No hay un umbral universal: importa qué errores puedes aceptar y si todas las clases relevantes tienen soporte suficiente.' },
   precision: { name: 'Precisión', short: 'De los casos predichos como una clase, cuántos eran realmente de esa clase.' },
   recall: { name: 'Recall o cobertura', short: 'De los casos reales de una clase, cuántos fueron encontrados.' },
   support: { name: 'Soporte', short: 'Cantidad de casos reales disponibles para una clase.' },
@@ -89,7 +91,7 @@ export const concepts: Record<string, Concept> = {
   holt_damped: { name: 'Holt amortiguado', short: 'Continúa una tendencia, reduciendo gradualmente su fuerza hacia adelante.' },
   holt_winters_add_damped: { name: 'Holt-Winters aditivo amortiguado', short: 'Combina nivel, tendencia y diferencias que se repiten entre meses.' },
   permutation_importance: { name: 'Importancia por permutación', short: 'Mide cuánto cambia el rendimiento al alterar una variable en datos de validación.', warning: 'No demuestra causalidad.' },
-  p90_error: { name: 'P90 del error absoluto', short: 'Valor igual o mayor que el 90% de los errores absolutos observados.', warning: 'Describe errores grandes; no participa en la selección.' },
+  p90_error: { name: 'P90 del error absoluto', short: 'El 90% de los errores absolutos fue igual o menor que este valor.', compareAgainst: 'Compáralo con el máximo error que tu uso real puede tolerar y con la mediana del error absoluto.', goodBad: 'Cuanto más se aleja de la mediana, más importante es revisar los casos con errores grandes.', warning: 'Describe errores grandes; no participa en la selección.' },
 }
 
 export function explain(id: string) {

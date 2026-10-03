@@ -9,6 +9,7 @@ describe('ConceptHelp', () => {
     button.focus()
     fireEvent.click(button)
     expect(screen.getByRole('region', {name:/Ayuda sobre F1 macro/})).toBeTruthy()
+    expect(screen.getByText(/Compáralo con la referencia/)).toBeTruthy()
     expect(button.getAttribute('aria-expanded')).toBe('true')
     fireEvent.keyDown(document, {key:'Escape'})
     expect(screen.queryByRole('region')).toBeNull()

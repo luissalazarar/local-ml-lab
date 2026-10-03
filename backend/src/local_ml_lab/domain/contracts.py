@@ -24,7 +24,7 @@ class AnalysisConfig(StrictModel):
     # None means "use the eligible defaults"; [] is an explicit featureless selection.
     included_column_ids: list[str] | None = None
     excluded_column_ids: list[str] = Field(default_factory=list)
-    depth: Literal["quick", "recommended"] = "quick"
+    depth: Literal["quick", "recommended"] = "recommended"
     primary_metric: str | None = None
     validation_context: Literal["independent_records"] = "independent_records"
     seed: int = 42
@@ -51,6 +51,12 @@ class ContextRequest(StrictModel):
 
 
 ColumnId = Annotated[str, StringConstraints(pattern=r"^c\d{4}$")]
+
+
+class ScenarioRequest(StrictModel):
+    values: dict[ColumnId, float | str] = Field(default_factory=dict, max_length=8)
+    driver_id: ColumnId | None = None
+    class_label: str | None = Field(default=None, max_length=200)
 
 
 class ColumnPreparation(StrictModel):

@@ -14,10 +14,10 @@ class Settings(BaseSettings):
     queue_url: str = "redis://queue:6379/0"
     ml_threads: int = Field(default=2, ge=1, le=8)
     worker_concurrency: int = 1
-    max_upload_mib: int = Field(default=100, ge=1)
-    max_rows: int = 200_000
+    max_upload_mib: int = Field(default=200, ge=1)
+    max_rows: int = 4_000_000
     max_columns: int = 300
-    max_cells: int = 2_000_000
+    max_cells: int = 20_000_000
     max_profile_sample_rows: int = 10_000
     max_class_labels: int = 50
     analysis_timeout_seconds: int = Field(default=1200, ge=10, le=7200)

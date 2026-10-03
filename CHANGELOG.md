@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.0 — 2026-10-02
+
+- Ampliado a 200 MiB el tamaño máximo por archivo; API, Compose, proxy y texto visible quedan sincronizados, con streaming en Nginx y temporales de multipart sobre el volumen local.
+- Ampliada la capacidad tabular a 4 millones de filas y 20 millones de celdas, con muestreo de cabecera y hash incremental para evitar copias completas innecesarias en memoria.
+- Humanizados los errores de límites propagando sus códigos estables desde el worker hasta la interfaz.
+- Mostradas desde el primer paso las fuentes públicas sugeridas, reutilizando las mismas referencias de la Guía.
+- Añadida exploración visual calculada en backend con heatmap de correlaciones, scatterplots y boxplots sobre una muestra determinista, excluyendo identificadores y aclarando que correlación no implica causalidad.
+- Añadido en Estado un borrado global seguro de uploads, versiones, corridas, reportes e historial; bloquea trabajos activos y conserva la base, la configuración y la estructura de almacenamiento.
+- Explicadas las métricas con significado del valor, dirección, referencia comparable y veredicto contextual; MAE y RMSE ya aclaran su unidad y que no existe un umbral universal.
+- Mostradas las fuentes públicas de datos directamente bajo el bloque principal del Home, además de conservarlas en el asistente y la Guía.
+- Añadido a cada resultado tabular un resumen inmediato de variables predictivas y un laboratorio de escenarios respaldado por el modelo seleccionado, con selectores acotados, curva dinámica y límites no causales explícitos.
+- Añadida a resultados de pronóstico una vista interactiva para recorrer el futuro ya calculado y contrastar cada mes con su error histórico, sin reentrenar ni inventar drivers externos.
+- Cambiado el análisis nuevo a “Automático recomendado” por defecto para que modelos lineales y no lineales compitan con la misma validación; la sensibilidad ahora identifica y explica la forma observada de la curva sin imponer un ajuste separado.
+- Corregidos solapamientos en gráficos de regresión, pronóstico y escenarios mediante márgenes amplios y etiquetas de ejes espaciadas de forma determinista.
+
 ## 0.7.0 — 2026-09-30
 
 - Añadida `selection-policy-2.1`: el ganador provisional tabular del modo recomendado se vuelve a comparar con la referencia en tres separaciones reproducibles cuando existe soporte; una mejora no confirmada conserva la referencia.

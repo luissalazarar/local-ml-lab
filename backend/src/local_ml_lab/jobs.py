@@ -3,6 +3,7 @@ import json
 import multiprocessing
 import os
 import queue as queue_module
+import re
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -29,6 +30,7 @@ from local_ml_lab.data.readers import inspect_file, normalize_columns, profile_f
 from local_ml_lab.db.models import Artifact, Dataset, DatasetVersion, Event, Job, Preflight, Run
 from local_ml_lab.db.session import SessionLocal
 from local_ml_lab.ml.engine import analyze, resolve_primary_metric
+from local_ml_lab.ml.scenario import create_scenario_artifact
 from local_ml_lab.preflight import evaluate_preflight
 from local_ml_lab.reports import create_excel, create_pdf, sha
 from local_ml_lab.settings import settings
@@ -222,8 +224,9 @@ def _finish_cancelled(db, job):
 
 
 def _finish_failed(db, job, exc):
+    error_code = _error_code(exc)
     job.status = "failed"
-    job.error_code = type(exc).__name__
+    job.error_code = error_code
     job.finished_at = datetime.now(UTC)
     db.add(
         Event(
@@ -232,7 +235,7 @@ def _finish_failed(db, job, exc):
             event_type="failed",
             stage=job.progress.get("stage", "unknown"),
             severity="error",
-            message_code=type(exc).__name__,
+            message_code=error_code,
             payload={"detail": str(exc)[:300]},
         )
     )
@@ -241,6 +244,16 @@ def _finish_failed(db, job, exc):
         if run and not run.result_available:
             run.status = "failed"
     db.commit()
+
+
+def _error_code(exc: Exception) -> str:
+    explicit = getattr(exc, "code", None)
+    if isinstance(explicit, str) and explicit:
+        return explicit
+    detail = str(exc)
+    if isinstance(exc, ValueError) and re.fullmatch(r"[A-Z][A-Z0-9_]*", detail):
+        return detail
+    return type(exc).__name__
 
 
 def inspect_dataset(db, job):
@@ -418,7 +431,9 @@ def preflight(db, job):
     db.commit()
 
 
-def _analysis_child(frame_path, profile_path, config, result_path, live_dir, updates):
+def _analysis_child(
+    frame_path, profile_path, config, result_path, scenario_path, live_dir, updates
+):
     try:
         frame = pd.read_parquet(frame_path)
         profile = json.loads(Path(profile_path).read_text(encoding="utf-8"))
@@ -427,6 +442,16 @@ def _analysis_child(frame_path, profile_path, config, result_path, live_dir, upd
             updates.put(("event", event))
 
         result = analyze(frame, profile, config, progress, live_dir=live_dir)
+        try:
+            result["scenario_explorer"] = create_scenario_artifact(
+                frame, profile, config, result, scenario_path
+            )
+        except Exception as exc:
+            result["scenario_explorer"] = {
+                "available": False,
+                "reason_code": "SCENARIO_ARTIFACT_FAILED",
+                "failure_type": type(exc).__name__,
+            }
         Path(result_path).write_text(
             json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8"
         )
@@ -447,6 +472,8 @@ def run_analysis(db, job):
     live_dir = out / "live"
     live_dir.mkdir(parents=True, exist_ok=True)
     pending_path = out / f".analysis-{job.id}.json"
+    scenario_pending_path = out / f".scenario-{job.id}.joblib"
+    scenario_final_path = out / "scenario_model.joblib"
     context = multiprocessing.get_context("spawn")
     updates = context.Queue()
     process = context.Process(
@@ -456,6 +483,7 @@ def run_analysis(db, job):
             str(settings.data_root / version.profile_ref),
             pf.resolved_config,
             str(pending_path),
+            str(scenario_pending_path),
             str(live_dir),
             updates,
         ),
@@ -490,6 +518,12 @@ def run_analysis(db, job):
             raise RuntimeError("ANALYSIS_PROCESS_FAILED")
         _raise_if_cancelled(db, job)
         result = json.loads(pending_path.read_text(encoding="utf-8"))
+        scenario = result.get("scenario_explorer", {})
+        if scenario.get("available"):
+            if not scenario_pending_path.is_file():
+                raise RuntimeError("SCENARIO_ARTIFACT_MISSING")
+            _raise_if_cancelled(db, job)
+            os.replace(scenario_pending_path, scenario_final_path)
         result["run_id"] = run.id
         raw = json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False).encode()
         final_path = out / "analysis_result.json"
@@ -513,6 +547,7 @@ def run_analysis(db, job):
             terminate_process_tree(process.pid)
             process.join(timeout=5)
         pending_path.unlink(missing_ok=True)
+        scenario_pending_path.unlink(missing_ok=True)
         for temporary in live_dir.glob("**/.*.tmp"):
             temporary.unlink(missing_ok=True)
 

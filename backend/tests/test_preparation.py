@@ -189,6 +189,13 @@ def test_recipe_and_output_hash_are_deterministic_and_contain_no_learned_statist
     assert frame_hash(first.frame) == frame_hash(second.frame)
 
 
+def test_streaming_frame_hash_preserves_canonical_contract():
+    frame = pd.DataFrame({"c0001": [1, 2], "c0002": ["a", "b"]})
+    assert frame_hash(frame) == canonical_hash(
+        {"columns": ["c0001", "c0002"], "rows": [[1, "a"], [2, "b"]]}
+    )
+
+
 def test_constant_and_identifier_remain_profile_recommendations():
     frame, mapping = normalize_columns(
         pd.DataFrame({"Cliente_ID": [f"C-{index}" for index in range(20)], "Constante": 1})

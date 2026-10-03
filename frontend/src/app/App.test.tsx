@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Home } from '../features/home/Home'
 import { Guide } from '../features/guide/Guide'
 import { App } from './App'
-import { driverBar, humanLabel, metricExplanation, metricLabel } from '../presentation/labels'
+import { driverBar, humanLabel, metricExplanation, metricLabel, systemError } from '../presentation/labels'
 
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
@@ -16,6 +16,8 @@ describe('contrato básico', () => {
     expect(screen.getByText(/Sin GPU obligatoria/)).toBeTruthy()
     expect(screen.getByText(/sin meses faltantes/i)).toBeTruthy()
     expect(screen.getByRole('button', {name: 'Probar con datos de ejemplo'})).toBeTruthy()
+    expect(screen.getByRole('link', {name: /Air Quality/}).getAttribute('href')).toContain('archive.ics.uci.edu')
+    expect(screen.getByRole('link', {name: /Datos Abiertos del Perú/})).toBeTruthy()
   })
 
   it('presenta marca y autoría como enlaces independientes', async () => {
@@ -31,7 +33,7 @@ describe('contrato básico', () => {
     expect(brand.textContent).toBe('Laboratorio ML')
     expect(brand.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
     expect(author.contains(brand)).toBe(false)
-    expect(screen.getByText('v0.7.0000')).toBeTruthy()
+    expect(screen.getByText('v0.7.0001')).toBeTruthy()
   })
 
   it('marca la sección activa en la navegación principal', async () => {
@@ -47,6 +49,7 @@ describe('contrato básico', () => {
     expect(humanLabel('selection_oof')).toBe('Predicción de validación')
     expect(metricLabel('r2', 'R2')).toBe('R²')
     expect(metricExplanation('balanced_accuracy')).toMatch(/cada clase/)
+    expect(systemError('MAX_ROWS_EXCEEDED')).toMatch(/máximo de filas/)
   })
 
   it('escala importancias positivas, negativas y cero alrededor del centro', () => {

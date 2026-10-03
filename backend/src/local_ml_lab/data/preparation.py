@@ -61,10 +61,28 @@ def canonical_hash(value: Any) -> str:
 
 def frame_hash(frame: pd.DataFrame) -> str:
     """Content hash independent from parquet transport metadata."""
-    normalized = []
+    digest = hashlib.sha256()
+    digest.update(b'{"columns":')
+    digest.update(
+        json.dumps(
+            list(frame.columns), ensure_ascii=False, separators=(",", ":")
+        ).encode("utf-8")
+    )
+    digest.update(b',"rows":[')
+    first = True
     for row in frame.itertuples(index=False, name=None):
-        normalized.append([_json_value(value) for value in row])
-    return canonical_hash({"columns": list(frame.columns), "rows": normalized})
+        if not first:
+            digest.update(b",")
+        digest.update(
+            json.dumps(
+                [_json_value(value) for value in row],
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        )
+        first = False
+    digest.update(b"]}")
+    return digest.hexdigest()
 
 
 def suggest_preparation(frame: pd.DataFrame, profile: dict, source_extension: str) -> dict:

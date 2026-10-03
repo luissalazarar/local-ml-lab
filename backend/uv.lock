@@ -398,7 +398,7 @@ wheels = [
 
 [[package]]
 name = "local-ml-lab"
-version = "0.7.0"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -406,6 +406,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "filelock" },
     { name = "httpx" },
+    { name = "joblib" },
     { name = "matplotlib" },
     { name = "numpy" },
     { name = "openai" },
@@ -442,6 +443,7 @@ requires-dist = [
     { name = "fastapi", specifier = "==0.116.1" },
     { name = "filelock", specifier = "==3.19.1" },
     { name = "httpx", specifier = "==0.28.1" },
+    { name = "joblib", specifier = "==1.6.0" },
     { name = "matplotlib", specifier = "==3.10.6" },
     { name = "numpy", specifier = "==2.3.3" },
     { name = "openai", specifier = "==1.109.1" },

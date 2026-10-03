@@ -1,5 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { BrandSymbol } from '../../brand/BrandSymbol'
+import { PublicDatasetSuggestions } from '../../education/PublicDatasetSuggestions'
 
 const capabilities = [
   ['Estimar un valor', 'Duración, cantidad, consumo o costo.'],
@@ -26,6 +27,10 @@ export function Home() {
             <button className="button secondary" onClick={() => navigate('/new?examples=1')}>
               Probar con datos de ejemplo
             </button>
+          </div>
+          <div className="heroDatasets" aria-labelledby="home-datasets-title">
+            <strong id="home-datasets-title">Datasets públicos para probar</strong>
+            <PublicDatasetSuggestions compact />
           </div>
         </div>
         <div className="trustCard">

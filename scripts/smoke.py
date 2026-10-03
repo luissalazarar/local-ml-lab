@@ -131,6 +131,14 @@ forecast_dataset, forecast_run, forecast = analyze_example(
 assert regression["drivers"] and all(
     driver["fit_scope"] == "fold_train_only" for driver in regression["drivers"]
 )
+scenario_metadata = regression["scenario_explorer"]
+assert scenario_metadata["available"] is True and scenario_metadata["controls"]
+scenario = call(
+    f"/runs/{regression_run['run_id']}/scenario",
+    "POST",
+    {"values": {}, "driver_id": scenario_metadata["controls"][0]["column_id"]},
+)
+assert len(scenario["curve"]) >= 2 and scenario["prediction"] is not None
 assert classification["diagnostics"]["confusion_matrix"]
 assert any(row["evaluation_role"] == "forecast_future" for row in forecast["predictions"])
 assert any(row["evaluation_role"] == "final_test" for row in forecast["predictions"])
@@ -153,7 +161,7 @@ payloads = {
 }
 with zipfile.ZipFile(io.BytesIO(payloads["xlsx"])) as workbook:
     worksheets = [name for name in workbook.namelist() if name.startswith("xl/worksheets/sheet")]
-    assert len(worksheets) == 18
+    assert len(worksheets) == 19
 assert payloads["pdf"].startswith(b"%PDF") and len(payloads["pdf"]) > 2_000
 
 context = call(

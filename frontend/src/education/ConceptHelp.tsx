@@ -26,7 +26,7 @@ export function ConceptHelp({ concept, label = '¿Qué significa?' }: { concept:
       <strong>{item.name}</strong>
       <p>{item.short}</p>
       {item.extended && <p>{item.extended}</p>}
-      {[item.interpretation, item.range, item.warning].filter(Boolean).map(text => <small key={text}>{text}</small>)}
+      {[item.interpretation, item.range, item.compareAgainst, item.goodBad, item.warning].filter(Boolean).map(text => <small key={text}>{text}</small>)}
     </div>}
   </div>
 }

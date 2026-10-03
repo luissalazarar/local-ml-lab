@@ -1,4 +1,4 @@
-# Laboratorio ML · v0.7.0000
+# Laboratorio ML · v0.7.0001
 
 ¿Tienes un Excel y quieres probar machine learning, pero no sabes por dónde empezar?
 
@@ -16,6 +16,8 @@ La identidad visual (símbolo, variantes y tamaños de uso), los tokens y el est
 - Comparar referencias simples, modelos lineales y árboles con particiones congeladas, confirmación secundaria cuando aplica y una política conservadora.
 - Observar candidatos, métricas, trayectorias y gráficos reales por evaluación mientras el run continúa; después se puede reproducir el recorrido sin reentrenar.
 - Revisar calidad, exclusiones, métricas, candidatos fallidos y límites.
+- Explorar variables numéricas con correlaciones, scatterplots y boxplots calculados localmente sobre una muestra determinista.
+- Ver qué variables aportaron más a la predicción y probar escenarios interactivos con la forma real del modelo seleccionado, lineal o no lineal, dentro de los rangos observados.
 - Exportar Excel, PDF y contexto TXT/Markdown/JSON para cualquier IA.
 - Reabrir el historial persistente después de reiniciar.
 
@@ -54,7 +56,7 @@ En Windows también puedes ejecutar `powershell -ExecutionPolicy Bypass -File sc
 3. En **Preparar**, revisa una columna a la vez, confirma qué contiene, para qué sirve y cómo interpretarla; el original no cambia.
 4. Elige el resultado que quieres predecir; para pronóstico, también fecha, horizonte y, solo si corresponde, agregación mensual.
 5. Revisa el preflight y ejecuta.
-6. Observa evaluaciones reales en vivo y después compara selección, prueba reservada, referencia, métricas, drivers y exportaciones.
+6. Observa evaluaciones reales en vivo y después compara selección, prueba reservada, referencia, métricas y drivers; en regresión o clasificación puedes mover entradas y en pronóstico recorrer el horizonte ya calculado, sin modificar la corrida.
 
 El flujo es **Original → Preparado → Análisis → Entrenamiento**. Preparar no significa que Laboratorio ML pueda saber si tus datos son correctos para tu negocio. Las transformaciones que aprenden de los datos continúan ocurriendo únicamente dentro del entrenamiento para evitar fugas.
 
@@ -70,7 +72,7 @@ El Excel preparado contiene datos activos, filas apartadas, transformaciones, co
 
 ## Limitaciones y qué no hace
 
-V1 no combina tablas, reproduce Power Query, hace pivots, fuzzy dedupe ni elimina outliers automáticamente. Tampoco ofrece inferencia por lotes, clustering, calibración formal, intervalos conformales, SHAP, tuning Optuna completo, GPU, deep learning, multiusuario, despliegue público ni causalidad. Forecasting acepta una sola serie mensual regular sin covariables; exige calendario continuo, no rellena huecos y permite sumar o promediar observaciones del mes solo para ese análisis. La validación tabular supone registros independientes: grupos, entidades repetidas y usos temporales no están soportados. Consulta [ROADMAP](docs/ROADMAP.md).
+V1 no combina tablas, reproduce Power Query, hace pivots, fuzzy dedupe ni elimina outliers automáticamente. Tampoco ofrece inferencia por lotes, clustering, calibración formal, intervalos conformales, SHAP, tuning Optuna completo, GPU, deep learning, multiusuario, despliegue público ni causalidad. El simulador interactivo proyecta con un reajuste local del modelo seleccionado dentro de rangos observados: no es una nueva evaluación, una intervención causal ni una garantía futura. Forecasting acepta una sola serie mensual regular sin covariables; exige calendario continuo, no rellena huecos y permite sumar o promediar observaciones del mes solo para ese análisis. La validación tabular supone registros independientes: grupos, entidades repetidas y usos temporales no están soportados. Consulta [ROADMAP](docs/ROADMAP.md).
 
 ## Probar sin usar tus propios datos
 
@@ -84,7 +86,7 @@ La estructura recomendada es una tabla con una fila por observación, una column
 
 ## Datasets públicos para seguir practicando
 
-La sección [Guía](http://localhost:3000/guide#datasets) enlaza UCI, OpenML, la Plataforma Nacional de Datos Abiertos del Perú y Our World in Data. Son referencias externas: la app no descarga ni envía datos automáticamente y ningún dataset está garantizado para funcionar sin preparación.
+El Home, el primer paso y la sección [Guía](http://localhost:3000/guide#datasets) enlazan UCI y la Plataforma Nacional de Datos Abiertos del Perú. Son referencias externas: la app no descarga ni envía datos automáticamente y ningún dataset está garantizado para funcionar sin preparación.
 
 ## Versión
 
@@ -116,7 +118,7 @@ La sección [Guía](http://localhost:3000/guide#datasets) enlaza UCI, OpenML, la
 
 **¿Cómo recupero el historial?** Abre Historial; el volumen persiste tras `docker compose down`.
 
-**¿Cómo borro mis datos?** Elimina runs inactivos en Historial y datasets sin referencias en Estado. La API bloquea el borrado si existen jobs activos o análisis dependientes.
+**¿Cómo borro mis datos?** En Estado puedes borrar elementos por separado o usar **Borrar datos guardados** para eliminar uploads, versiones, corridas, reportes e historial de una sola vez. La acción pide confirmación, se bloquea si existen trabajos activos y conserva la aplicación, su configuración y la estructura de almacenamiento.
 
 **¿Qué ocurre si se cancela un modelo?** El worker termina el proceso de análisis y sus descendientes dentro de un límite acotado. El job queda `cancelled`, no `failed`, y nunca publica un parcial como completo.
 

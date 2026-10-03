@@ -41,6 +41,31 @@ def test_high_cardinality_text_profile_is_json_serializable():
     assert type(profile["columns"][0]["possible_id"]) is bool
 
 
+def test_profile_builds_backend_visualizations_without_identifiers():
+    frame, mapping = normalize_columns(
+        pd.DataFrame(
+            {
+                "registro_id": range(100),
+                "ventas": range(100),
+                "costos": [value * 2 + (value % 3) for value in range(100)],
+                "margen": [value % 11 for value in range(100)],
+            }
+        )
+    )
+
+    visualizations = profile_frame(frame, mapping)["visualizations"]
+
+    assert [item["display_name"] for item in visualizations["numeric_columns"]] == [
+        "ventas",
+        "costos",
+        "margen",
+    ]
+    assert visualizations["correlation"]["method"] == "pearson"
+    assert len(visualizations["correlation"]["values"]) == 3
+    assert visualizations["boxplots"][0]["median"] == pytest.approx(49.5)
+    assert visualizations["scatterplots"][0]["points"]
+
+
 def test_reads_real_csv_xlsx_and_parquet(tmp_path):
     expected = pd.DataFrame({"valor": [1, 2], "grupo": ["a", "b"]})
     csv_path = tmp_path / "data.csv"

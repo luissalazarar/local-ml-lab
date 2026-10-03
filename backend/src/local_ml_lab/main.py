@@ -26,7 +26,16 @@ from local_ml_lab.data.preparation import (
 )
 from local_ml_lab.data.readers import profile_frame
 from local_ml_lab.db.migrate import migrate
-from local_ml_lab.db.models import Artifact, Dataset, DatasetVersion, Event, Job, Preflight, Run
+from local_ml_lab.db.models import (
+    Artifact,
+    Dataset,
+    DatasetVersion,
+    Event,
+    IdempotencyRecord,
+    Job,
+    Preflight,
+    Run,
+)
 from local_ml_lab.db.session import get_db
 from local_ml_lab.domain.contracts import (
     ContextRequest,
@@ -34,12 +43,15 @@ from local_ml_lab.domain.contracts import (
     PreflightRequest,
     PreparationRequest,
     RunRequest,
+    ScenarioRequest,
 )
 from local_ml_lab.examples import BY_ID, public_examples
 from local_ml_lab.jobs import canonical_hash, enqueue
 from local_ml_lab.ml.planning import PLAN_POLICY_VERSION
+from local_ml_lab.ml.scenario import clear_scenario_cache, load_scenario_bundle, scenario_prediction
 from local_ml_lab.ml.selection import POLICY_VERSION as SELECTION_POLICY_VERSION
 from local_ml_lab.settings import settings
+from local_ml_lab.storage import clear_saved_files
 
 app = FastAPI(
     title="Laboratorio ML API",
@@ -157,6 +169,7 @@ def system(request: Request):
             "max_upload_mib": settings.max_upload_mib,
             "max_rows": settings.max_rows,
             "max_columns": settings.max_columns,
+            "max_cells": settings.max_cells,
         },
         "capabilities": {
             "regression": True,
@@ -735,6 +748,38 @@ def delete_dataset(dataset_id: str, db: Session = Depends(get_db)):
     return {"status": "deleted", "dataset_id": dataset_id}
 
 
+@app.delete("/api/v1/local-data")
+def delete_local_data(db: Session = Depends(get_db)):
+    active = db.scalar(
+        select(Job).where(Job.status.in_(["queued", "running", "cancel_requested"]))
+    )
+    uploading = db.scalar(select(Dataset).where(Dataset.status == "queued"))
+    if active or uploading:
+        raise HTTPException(
+            409, "Espera o cancela las importaciones y trabajos activos antes de borrar los datos"
+        )
+
+    counts = {
+        "datasets": len(db.scalars(select(Dataset)).all()),
+        "runs": len(db.scalars(select(Run)).all()),
+        "jobs": len(db.scalars(select(Job)).all()),
+    }
+    db.execute(delete(Event))
+    db.execute(delete(Artifact))
+    db.execute(delete(Job))
+    db.execute(delete(Run))
+    db.execute(delete(Preflight))
+    db.execute(delete(DatasetVersion))
+    db.execute(delete(Dataset))
+    db.execute(delete(IdempotencyRecord))
+    db.commit()
+
+    settings.prepare()
+    clear_scenario_cache()
+    removed_entries = clear_saved_files(settings.data_root)
+    return {"status": "deleted", "counts": counts, "removed_entries": removed_entries}
+
+
 @app.get("/api/v1/runs/{run_id}/result")
 def get_result(run_id: str, response: Response, db: Session = Depends(get_db)):
     run = db.get(Run, run_id)
@@ -742,6 +787,41 @@ def get_result(run_id: str, response: Response, db: Session = Depends(get_db)):
         raise HTTPException(404)
     response.headers["ETag"] = f'"{run.result_sha256}"'
     return json.loads((settings.data_root / run.result_ref).read_text(encoding="utf-8"))
+
+
+@app.post("/api/v1/runs/{run_id}/scenario")
+def predict_scenario(run_id: str, body: ScenarioRequest, db: Session = Depends(get_db)):
+    run = db.get(Run, run_id)
+    if not run or not run.result_ref:
+        raise HTTPException(404)
+    result = json.loads((settings.data_root / run.result_ref).read_text(encoding="utf-8"))
+    metadata = result.get("scenario_explorer", {})
+    if not metadata.get("available"):
+        raise HTTPException(409, metadata.get("reason_code", "SCENARIO_NOT_AVAILABLE"))
+    path = settings.data_root / "runs" / run_id / "scenario_model.joblib"
+    try:
+        bundle = load_scenario_bundle(str(path), metadata["model_sha256"])
+        scenario = scenario_prediction(bundle, body.values, body.driver_id, body.class_label)
+        if not scenario.get("training_depth"):
+            config_path = settings.data_root / "runs" / run_id / "analysis_config.json"
+            if config_path.is_file():
+                scenario["training_depth"] = json.loads(
+                    config_path.read_text(encoding="utf-8")
+                ).get("depth")
+        if not scenario.get("model_family"):
+            selected_id = metadata.get("model_id")
+            selected = next(
+                (
+                    candidate
+                    for candidate in result.get("candidates", [])
+                    if candidate.get("candidate_id", candidate.get("model_id")) == selected_id
+                ),
+                {},
+            )
+            scenario["model_family"] = selected.get("family")
+        return scenario
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 @app.get("/api/v1/runs/{run_id}/live")

@@ -4,6 +4,8 @@ import { api, Profile, waitJob } from "../../api/client";
 import { excelChecklist, explain } from "../../education/concepts";
 import { ConceptHelp } from "../../education/ConceptHelp";
 import { DataFlow } from "../../education/DataFlow";
+import { PublicDatasetSuggestions } from "../../education/PublicDatasetSuggestions";
+import { DataExploration } from "../../visualizations/DataExploration";
 
 type Goal = "estimate_value" | "classify" | "forecast" | "drivers" | "explore";
 type DatasetInfo = { safe_extension: string; metadata_json: { sheet_names?: string[] } };
@@ -55,7 +57,7 @@ export function Wizard() {
   const [goal, setGoal] = useState<Goal>("estimate_value");
   const [target, setTarget] = useState("");
   const [dateCol, setDateCol] = useState("");
-  const [depth, setDepth] = useState("quick");
+  const [depth, setDepth] = useState("recommended");
   const [included, setIncluded] = useState<string[]>([]);
   const [xlsxInfo, setXlsxInfo] = useState<DatasetInfo | null>(null);
   const [sheetName, setSheetName] = useState("");
@@ -384,7 +386,7 @@ export function Wizard() {
         <section className="panel uploadPanel">
           <h2>Sube tu Excel o archivo de datos</h2>
           <p>
-            Excel (.xlsx), CSV o Parquet · máximo 100 MiB. Conservamos el original y
+            Excel (.xlsx), CSV o Parquet · máximo 200 MiB. Conservamos el original y
             registramos cómo se interpretó.
           </p>
           <label className="dropzone">
@@ -422,6 +424,10 @@ export function Wizard() {
             <p>Cada opción abre un Excel normal y prepara una configuración recomendada que podrás revisar y modificar antes de ejecutar.</p>
             <div className="exampleGrid">{examples.map((item) => <button className="exampleCard" key={item.id} onClick={() => void loadExample(item.id)} disabled={busy}><strong>{item.name}</strong><span>{item.description}</span><small>{item.what_you_learn}</small></button>)}</div>
           </div>
+          <div className="publicDatasetSuggestions">
+            <h3>¿Necesitas datos para empezar?</h3>
+            <PublicDatasetSuggestions />
+          </div>
         </section>
       )}
       {step === 2 && profile && (
@@ -450,6 +456,7 @@ export function Wizard() {
               </strong>
             </div>
           </div>
+          <DataExploration profile={profile} />
           <div className="panel">
             <div className="panelTitle">
               <div>
@@ -664,10 +671,10 @@ export function Wizard() {
             <label>
               Profundidad
               <select value={depth} onChange={(e) => { setDepth(e.target.value); setPreflight(null) }}>
-                <option value="quick">Rápido</option>
-                <option value="recommended">Recomendado</option>
+                <option value="recommended">Automático recomendado</option>
+                <option value="quick">Rápido · solo referencia y modelo lineal</option>
               </select>
-              <small>{depth === "quick" ? "Referencia y modelo lineal correspondiente. Primera revisión y menos tiempo." : "Añade Extra Trees y Random Forest. Prueba más familias y toma más tiempo; no garantiza un resultado mejor."}</small>
+              <small>{depth === "quick" ? "Compara únicamente la referencia y un modelo lineal. Es más rápido, pero no puede descubrir umbrales, saturación ni otras formas no lineales." : "Compara referencia, modelo lineal, Extra Trees y Random Forest con las mismas separaciones. Elige por rendimiento fuera del entrenamiento y consistencia, no por una correlación aislada."}</small>
             </label>
             {goal !== "explore" && (
               <label>

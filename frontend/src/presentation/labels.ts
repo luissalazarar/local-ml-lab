@@ -1,3 +1,5 @@
+import { concepts, explain } from '../education/concepts'
+
 const labels: Record<string, string> = {
   selection_oof: 'Predicción de validación', selection_validation: 'Validación de selección',
   selection_validation_folds: 'Particiones de validación', selection_monthly_holdout: 'Validación mensual usada para seleccionar',
@@ -9,7 +11,10 @@ const labels: Record<string, string> = {
   queued: 'En cola', planned: 'Planificado', completed: 'Completado', ineligible: 'No elegible', timeout: 'Tiempo agotado', running: 'En curso', ready: 'Disponible', not_evaluable: 'No evaluable', estimate_value: 'Estimar un valor',
   classify: 'Predecir una categoría', forecast: 'Estimar próximos meses', drivers: 'Entender variables útiles', explore: 'Explorar la data',
   regression: 'Regresión', classification: 'Clasificación', forecasting: 'Pronóstico mensual', exploration: 'Exploración', shap: 'Explicaciones SHAP',
-  max_upload_mib: 'Tamaño máximo por archivo (MiB)', max_rows: 'Máximo de filas', max_columns: 'Máximo de columnas',
+  max_upload_mib: 'Tamaño máximo por archivo (MiB)', max_rows: 'Máximo de filas', max_columns: 'Máximo de columnas', max_cells: 'Máximo de celdas',
+  MAX_ROWS_EXCEEDED: 'El archivo supera el máximo de filas admitido.',
+  MAX_COLUMNS_EXCEEDED: 'El archivo supera el máximo de columnas admitido.',
+  MAX_CELLS_EXCEEDED: 'El archivo supera el máximo total de celdas admitido.',
   INSUFFICIENT_ROWS: 'No hay suficientes observaciones para evaluar modelos.',
   CLASS_SUPPORT_INSUFFICIENT: 'No hay suficientes casos por clase para evaluar modelos.',
   ALL_CANDIDATES_FAILED: 'Ningún modelo pudo completar una evaluación comparable.',
@@ -26,6 +31,17 @@ const labels: Record<string, string> = {
   GAIN_NOT_REPEATED_IN_CONFIRMATION: 'La mejora no volvió a aparecer con suficiente consistencia; se conservó la referencia.',
   HORIZON_PERFORMANCE_VARIES: 'El error histórico cambia de forma importante según la distancia al futuro.',
   CLASS_WITH_ZERO_RECALL: 'El modelo no reconoció ningún caso de al menos una categoría con soporte suficiente.',
+  ANALYSIS_NOT_COMPLETED: 'El análisis no terminó y no puede generar escenarios.',
+  SCENARIOS_NOT_APPLICABLE: 'Los escenarios interactivos aplican a regresión y clasificación; el pronóstico ya tiene su propia proyección temporal.',
+  SCENARIO_INPUTS_NOT_AVAILABLE: 'La corrida no conservó suficientes entradas para construir escenarios.',
+  INSUFFICIENT_SCENARIO_ROWS: 'No hay suficientes filas válidas para construir escenarios.',
+  SELECTED_MODEL_NOT_IN_CATALOG: 'El modelo seleccionado ya no está disponible en el catálogo local.',
+  NO_EDITABLE_SCENARIO_VARIABLES: 'No quedaron variables editables para construir escenarios.',
+  SCENARIO_VARIABLE_NOT_EDITABLE: 'Solo puedes modificar las variables mostradas en este panel.',
+  SCENARIO_DRIVER_NOT_EDITABLE: 'La variable elegida no está disponible para el gráfico.',
+  SCENARIO_VALUE_OUTSIDE_OBSERVED_RANGE: 'El valor está fuera del rango observado permitido.',
+  SCENARIO_CATEGORY_NOT_AVAILABLE: 'La categoría no está disponible en esta corrida.',
+  SCENARIO_ARTIFACT_INTEGRITY_ERROR: 'El modelo local de escenarios no pasó la comprobación de integridad.',
   confirmation: 'Confirmación de estabilidad', confirmation_cv: 'Separaciones adicionales de confirmación',
   PLAN_READY: 'Plan de evaluación congelado',
   CANDIDATE_STARTED: 'Evaluando un candidato con el plan congelado',
@@ -76,4 +92,3 @@ export function progressMessage(stage?: string, message?: string) {
 export function driverBar(importance: number, maxAbs: number) {
   return { side: importance < 0 ? 'negative' : 'positive', width: Math.abs(importance) / Math.max(maxAbs, 1e-12) * 50 }
 }
-import { concepts, explain } from '../education/concepts'

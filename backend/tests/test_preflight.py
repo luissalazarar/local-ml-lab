@@ -1,12 +1,22 @@
 import pandas as pd
 
 from local_ml_lab.data.readers import normalize_columns, profile_frame
+from local_ml_lab.domain.contracts import AnalysisConfig
 from local_ml_lab.preflight import evaluate_preflight
 
 
 def prepared(raw, config):
     frame, mapping = normalize_columns(raw)
     return evaluate_preflight(frame, profile_frame(frame, mapping), config)
+
+
+def test_new_analysis_defaults_to_recommended_model_comparison():
+    config = AnalysisConfig(
+        dataset_version_id="version-1",
+        goal="estimate_value",
+        problem_type="regression",
+    )
+    assert config.depth == "recommended"
 
 
 def test_blocks_continuous_classification_and_categorical_regression():

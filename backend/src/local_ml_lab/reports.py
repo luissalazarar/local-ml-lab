@@ -116,6 +116,7 @@ def create_excel(result: dict, path: Path) -> None:
         "15_Prueba_Reservada",
         "16_Metricas_Clase",
         "17_Pronostico_Horizonte",
+        "18_Escenarios",
     ]
     for name in sheets:
         worksheet = workbook.add_worksheet(name)
@@ -131,6 +132,7 @@ def create_excel(result: dict, path: Path) -> None:
         ("Métrica principal", presentation_label(result.get("primary_metric_id"))),
         ("Confiabilidad", result.get("reliability", {}).get("primary_level")),
         ("Significado", "Solidez de la evaluación; no es una probabilidad de acierto."),
+        ("Escenarios interactivos", scenario_summary_text(result)),
         ("Versión de Laboratorio ML", release_label(result)),
     ]
     for index, (key, value) in enumerate(rows, 3):
@@ -200,6 +202,11 @@ def create_excel(result: dict, path: Path) -> None:
     write_table(
         workbook.get_worksheet_by_name("17_Pronostico_Horizonte"),
         result.get("forecast", {}).get("horizon_diagnostics", []),
+        header,
+    )
+    write_table(
+        workbook.get_worksheet_by_name("18_Escenarios"),
+        scenario_rows(result),
         header,
     )
     workbook.close()
@@ -296,6 +303,37 @@ def preparation_rows(result):
             }
         )
     return rows or [{"accion": "No hubo columnas para documentar."}]
+
+
+def scenario_summary_text(result):
+    scenario = result.get("scenario_explorer", {})
+    if scenario.get("available"):
+        return (
+            f"Disponible con {scenario.get('model_name', 'el modelo seleccionado')}; "
+            "es una proyección acotada, no una evaluación ni evidencia causal."
+        )
+    return "No disponible para esta corrida."
+
+
+def scenario_rows(result):
+    scenario = result.get("scenario_explorer", {})
+    if not scenario.get("available"):
+        return [{"estado": "No disponible", "motivo": scenario.get("reason_code", "No aplica")}]
+    return [
+        {
+            "estado": "Disponible",
+            "modelo": scenario.get("model_name"),
+            "variable": control.get("display_name"),
+            "tipo": control.get("kind"),
+            "valor_representativo": control.get("default"),
+            "minimo_observado": control.get("minimum"),
+            "maximo_observado": control.get("maximum"),
+            "categorias_disponibles": control.get("options"),
+            "importancia_predictiva": control.get("importance_mean"),
+            "nota": "Proyección acotada; no es evaluación ni evidencia causal.",
+        }
+        for control in scenario.get("controls", [])
+    ]
 
 
 def candidate_error_rows(candidates):
@@ -464,6 +502,20 @@ def create_pdf(result: dict, path: Path) -> None:
             Spacer(1, 6 * mm),
             Paragraph("Variables predictivas", styles["Heading2"]),
             styled_table(driver_rows),
+        ]
+    scenario = result.get("scenario_explorer", {})
+    if scenario.get("available"):
+        story += [
+            Spacer(1, 6 * mm),
+            Paragraph("Escenarios interactivos", styles["Heading2"]),
+            Paragraph(
+                paragraph_text(
+                    f"La app guardó un reajuste local de {scenario.get('model_name', 'el modelo seleccionado')} "
+                    f"con {scenario.get('fit_row_count', 0)} filas para probar valores dentro de los rangos observados. "
+                    "Estas proyecciones no reevalúan la corrida, no demuestran causalidad y no garantizan resultados futuros."
+                ),
+                styles["BodyText"],
+            ),
         ]
     story += [PageBreak(), Paragraph("Limitaciones y advertencias", styles["Heading2"])]
     for text in result.get("limitations", []) or ["Sin advertencias adicionales"]:
