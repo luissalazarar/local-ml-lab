@@ -18,7 +18,7 @@ try {
       throw 'Docker Desktop no está instalado. La instalación asistida debe instalarlo desde la fuente oficial antes de ejecutar este script.'
     }
     Write-Host 'Iniciando Docker Desktop y esperando que el motor quede listo...'
-    Start-Process -FilePath $desktop
+    Start-Process -FilePath $desktop -WindowStyle Hidden
     $dockerDeadline = (Get-Date).AddMinutes(10)
     do {
       Start-Sleep -Seconds 5
@@ -45,11 +45,24 @@ try {
   docker compose version | Out-Null
   if ($LASTEXITCODE -ne 0) { throw 'Docker Compose v2 no está disponible.' }
   $portNumber = if ($env:APP_PORT) { [int]$env:APP_PORT } else { 3000 }
-  $appUrl = "http://localhost:$portNumber"
+  $appUrl = "http://127.0.0.1:$portNumber"
   $port = Get-NetTCPConnection -LocalPort $portNumber -State Listen -ErrorAction SilentlyContinue
-  if ($port) { throw "El puerto $portNumber está ocupado por PID $($port.OwningProcess). Define APP_PORT con otro puerto." }
+  $composePort = docker compose port frontend 8080 2>$null
+  $ownedByThisApp = $composePort -and ($composePort -match ":$portNumber$")
+  if ($port -and -not $ownedByThisApp) {
+    throw "El puerto $portNumber está ocupado por otro proceso (PID $($port.OwningProcess -join ', ')). Define APP_PORT con otro puerto."
+  }
   $drive = Get-PSDrive -Name ((Get-Location).Drive.Name)
   if ($drive.Free -lt 2GB) { throw 'Hay menos de 2 GiB libres; libera espacio antes de construir.' }
+  $avastRoot = @(
+    Get-ChildItem Cert:\LocalMachine\Root, Cert:\CurrentUser\Root -ErrorAction SilentlyContinue |
+      Where-Object { $_.Subject -like '*Avast Web/Mail Shield Root*' }
+  )
+  if ($avastRoot.Count -gt 0) {
+    Write-Warning 'Avast HTTPS inspection detectada. La excepcion TLS se aplicara solo a esta construccion local.'
+    if (-not $env:UV_INSECURE_HOST) { $env:UV_INSECURE_HOST = 'pypi.org files.pythonhosted.org' }
+    if (-not $env:NPM_CONFIG_STRICT_SSL) { $env:NPM_CONFIG_STRICT_SSL = 'false' }
+  }
   docker compose up --build -d
   if ($LASTEXITCODE -ne 0) { throw 'Docker Compose no pudo construir o iniciar la aplicación.' }
   $deadline = (Get-Date).AddMinutes(8)

@@ -3,7 +3,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
 APP_PORT=${APP_PORT:-3000}
-APP_URL="http://localhost:$APP_PORT"
+APP_URL="http://127.0.0.1:$APP_PORT"
 command -v docker >/dev/null || { echo 'Docker no está instalado.'; exit 1; }
 if ! docker info >/dev/null 2>&1; then
   if [ "$(uname -s)" = "Darwin" ] && [ -d '/Applications/Docker.app' ]; then
@@ -24,6 +24,25 @@ if ! docker info >/dev/null 2>&1; then
   fi
 fi
 docker compose version >/dev/null
+published_port=$(docker compose port frontend 8080 2>/dev/null || true)
+if command -v lsof >/dev/null 2>&1 \
+  && lsof -nP -iTCP:"$APP_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+  case "$published_port" in
+    *:"$APP_PORT") ;;
+    *)
+      echo "El puerto $APP_PORT está ocupado por otro proceso. Ejecuta APP_PORT=3001 sh scripts/setup.sh." >&2
+      exit 1
+      ;;
+  esac
+fi
+if [ "$(uname -s)" = "Darwin" ] && command -v security >/dev/null 2>&1 \
+  && { security find-certificate -c 'Avast Web/Mail Shield Root' /Library/Keychains/System.keychain >/dev/null 2>&1 \
+    || security find-certificate -c 'Avast Web/Mail Shield Root' "$HOME/Library/Keychains/login.keychain-db" >/dev/null 2>&1; }; then
+  echo 'Aviso: Avast HTTPS inspection detectada; la excepcion TLS solo se usara durante esta construccion local.' >&2
+  UV_INSECURE_HOST=${UV_INSECURE_HOST:-'pypi.org files.pythonhosted.org'}
+  NPM_CONFIG_STRICT_SSL=${NPM_CONFIG_STRICT_SSL:-false}
+  export UV_INSECURE_HOST NPM_CONFIG_STRICT_SSL
+fi
 docker compose up --build -d
 echo "Esperando $APP_URL ..."
 i=0

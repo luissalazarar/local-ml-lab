@@ -9,7 +9,7 @@ import urllib.error
 import urllib.request
 import zipfile
 
-BASE = os.getenv("APP_URL", "http://localhost:3000").rstrip("/") + "/api/v1"
+BASE = os.getenv("APP_URL", "http://127.0.0.1:3000").rstrip("/") + "/api/v1"
 cookies = http.cookiejar.CookieJar()
 opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookies))
 session = json.load(opener.open(BASE + "/session", timeout=10))

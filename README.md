@@ -53,7 +53,7 @@ Windows PowerShell:
 powershell -ExecutionPolicy Bypass -File scripts/setup.ps1
 ```
 
-Abre [http://localhost:3000](http://localhost:3000). No hace falta `.env`, Python, Node, Git ni OpenAI. Git es opcional porque el repositorio también puede obtenerse como ZIP. Los scripts no cambian la política global de PowerShell ni borran datos. Consulta estado con `docker compose ps`; apaga sin borrar datos con `docker compose down`. Si el puerto 3000 está ocupado, define `APP_PORT` antes de ejecutar el instalador.
+Abre [http://127.0.0.1:3000](http://127.0.0.1:3000). Usamos la dirección IPv4 publicada por Compose para evitar que otra aplicación ligada a `localhost` por IPv6 intercepte la navegación. No hace falta `.env`, Python, Node, Git ni OpenAI. Git es opcional porque el repositorio también puede obtenerse como ZIP. Los scripts no cambian la política global de PowerShell ni borran datos. Consulta estado con `docker compose ps`; apaga sin borrar datos con `docker compose down`. Si el puerto 3000 está ocupado, define `APP_PORT` antes de ejecutar el instalador.
 
 ## Instalación asistida por IA
 
@@ -121,7 +121,7 @@ La estructura recomendada es una tabla con una fila por observación, una column
 
 ## Datasets públicos para seguir practicando
 
-El Home, el primer paso y la sección [Guía](http://localhost:3000/guide#datasets) enlazan UCI y la Plataforma Nacional de Datos Abiertos del Perú. Son referencias externas: la app no descarga ni envía datos automáticamente y ningún dataset está garantizado para funcionar sin preparación.
+El Home, el primer paso y la sección [Guía](http://127.0.0.1:3000/guide#datasets) enlazan UCI y la Plataforma Nacional de Datos Abiertos del Perú. Son referencias externas: la app no descarga ni envía datos automáticamente y ningún dataset está garantizado para funcionar sin preparación.
 
 ## Versión
 

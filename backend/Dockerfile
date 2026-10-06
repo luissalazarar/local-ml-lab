@@ -14,6 +14,7 @@ COPY backend/alembic.ini ./alembic.ini
 COPY backend/src/local_ml_lab/db/migrations ./src/local_ml_lab/db/migrations
 COPY examples ./examples
 COPY --chmod=755 docker/api-entrypoint.sh docker/worker-entrypoint.sh /usr/local/bin/
+RUN sed -i 's/\r$//' /usr/local/bin/api-entrypoint.sh /usr/local/bin/worker-entrypoint.sh
 ENV PATH="/app/.venv/bin:$PATH" PYTHONPATH=/app/src
 USER 10001:10001
 EXPOSE 8000
