@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <title>Laboratorio ML</title>
+  <!-- Hoja de datos con tres puntos en ascenso y una celda apartada donde el patrón se comprueba. -->
+  <path fill="#054D61" fill-rule="evenodd" d="M12 4H25A2 2 0 0 1 27 6V19A2 2 0 0 0 29 21H42A2 2 0 0 1 44 23V36A8 8 0 0 1 36 44H12A8 8 0 0 1 4 36V12A8 8 0 0 1 12 4ZM8 37a3 3 0 1 0 6 0a3 3 0 1 0 -6 0ZM14 31a3 3 0 1 0 6 0a3 3 0 1 0 -6 0ZM20 25a3 3 0 1 0 6 0a3 3 0 1 0 -6 0Z"/>
+  <path fill="#049990" fill-rule="evenodd" d="M32 4H36A8 8 0 0 1 44 12V16A2 2 0 0 1 42 18H32A2 2 0 0 1 30 16V6A2 2 0 0 1 32 4ZM34 11a3 3 0 1 0 6 0a3 3 0 1 0 -6 0Z"/>
+</svg>

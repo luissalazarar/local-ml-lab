@@ -1,0 +1,119 @@
+name: local-ml-lab
+services:
+  frontend:
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        NPM_CONFIG_STRICT_SSL: ${NPM_CONFIG_STRICT_SSL:-true}
+    ports:
+      - "127.0.0.1:${APP_PORT:-3000}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [edge]
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+      - /var/cache/nginx:size=16m
+      - /var/run:size=2m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    pids_limit: 64
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8080/]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+  api:
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        UV_INSECURE_HOST: ${UV_INSECURE_HOST:-}
+    command: [api]
+    environment: &backend-env
+      APP_DISPLAY_NAME: ${APP_DISPLAY_NAME:-Laboratorio ML}
+      APP_ENV: ${APP_ENV:-production}
+      DATA_ROOT: /data
+      DATABASE_URL: sqlite:////data/db/app.sqlite3
+      QUEUE_URL: redis://queue:6379/0
+      TMPDIR: /data/tmp
+      ML_THREADS: ${ML_THREADS:-2}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-1}
+      MAX_UPLOAD_MIB: ${MAX_UPLOAD_MIB:-200}
+      MAX_ROWS: ${MAX_ROWS:-4000000}
+      MAX_COLUMNS: ${MAX_COLUMNS:-300}
+      MAX_CELLS: ${MAX_CELLS:-20000000}
+      ANALYSIS_TIMEOUT_SECONDS: ${ANALYSIS_TIMEOUT_SECONDS:-1200}
+      HEARTBEAT_INTERVAL_SECONDS: ${HEARTBEAT_INTERVAL_SECONDS:-3}
+      SHAP_ENABLED: ${SHAP_ENABLED:-false}
+    volumes: [local_ml_data:/data]
+    networks: [edge, core]
+    init: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 128
+    tmpfs: [/tmp:size=64m]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/ready', timeout=2)"]
+      interval: 10s
+      timeout: 4s
+      retries: 15
+  worker:
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        UV_INSECURE_HOST: ${UV_INSECURE_HOST:-}
+    command: [worker]
+    environment: *backend-env
+    volumes: [local_ml_data:/data]
+    networks: [core]
+    depends_on:
+      queue:
+        condition: service_healthy
+    init: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 2g
+    cpus: 2.0
+    pids_limit: 256
+    tmpfs: [/tmp:size=256m]
+    stop_grace_period: 15s
+    healthcheck:
+      test: [CMD, python, -m, local_ml_lab.worker_health]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+  queue:
+    restart: unless-stopped
+    image: valkey/valkey:8.1.10-alpine
+    user: "999:1000"
+    command: [valkey-server, --appendonly, "yes", --appendfsync, everysec, --dir, /data, --maxmemory, 128mb, --maxmemory-policy, noeviction]
+    volumes: [local_ml_queue:/data]
+    networks: [core]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    pids_limit: 64
+    healthcheck:
+      test: [CMD, valkey-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+networks:
+  edge: {}
+  core:
+    internal: true
+volumes:
+  local_ml_data: {}
+  local_ml_queue: {}
