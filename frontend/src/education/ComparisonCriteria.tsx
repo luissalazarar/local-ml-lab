@@ -1,5 +1,5 @@
 import { metricLabel } from '../presentation/labels'
-import { betterMeans, consistencyRule, improvementRule, referenceRule, tieRule } from './comparisonRules'
+import { betterMeans, confirmationRule, consistencyRule, improvementRule, referenceRule, sharedEvaluationRule, tieRule } from './comparisonRules'
 
 type ComparisonCriteriaProps = {
   metricId: string | null | undefined
@@ -17,11 +17,11 @@ export function ComparisonCriteria({ metricId, problemType }: ComparisonCriteria
     <div className="metricInterpretationGrid">
       <article>
         <strong>La referencia simple</strong>
-        <p>Es una regla que no aprende nada y sirve de vara de medir: {referenceRule(problemType, metricId)}. Si un modelo no la supera con claridad, no aporta.</p>
+        <p>Es el resultado que obtendríamos sin usar variables ni buscar patrones: {referenceRule(problemType, metricId)}. Mide el mínimo útil que un modelo aprendido debe justificar antes de añadir complejidad.</p>
       </article>
       <article>
         <strong>«Mejor» se mide con {metricLabel(metricId)}</strong>
-        <p>Un modelo es mejor cuando {betterMeans(metricId)} que la referencia, con la misma métrica y las mismas pruebas, y solo en datos que no usó para aprender.</p>
+        <p>Un modelo es mejor cuando {betterMeans(metricId)} que la referencia, con la misma métrica y las mismas pruebas, y solo en datos que no usó para aprender. {sharedEvaluationRule}</p>
       </article>
       <article>
         <strong>Tres condiciones para reemplazarla</strong>
@@ -33,5 +33,6 @@ export function ComparisonCriteria({ metricId, problemType }: ComparisonCriteria
         <small>Si ninguno cumple las tres, se conserva la referencia. Son reglas conservadoras del producto, no una prueba de significancia estadística.</small>
       </article>
     </div>
+    <p className="muted"><strong>Comprobación adicional:</strong> {confirmationRule}</p>
   </section>
 }

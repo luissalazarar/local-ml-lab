@@ -4,14 +4,14 @@
 const ERROR_METRICS = ['mae', 'rmse']
 
 export function referenceRule(problemType?: string | null, metricId?: string | null) {
-  if (problemType === 'forecasting') return 'repite el último valor conocido de la serie, sin aprender nada'
+  if (problemType === 'forecasting') return 'usa la mejor regla histórica simple disponible —último valor, media histórica o patrón estacional— sin usar variables externas'
   if (problemType === 'classification') return 'predice siempre la clase más frecuente, sin usar ninguna variable'
   if (problemType === 'regression') {
     return metricId === 'mae'
       ? 'predice siempre la mediana de los datos de entrenamiento, sin usar ninguna variable'
       : 'predice siempre el promedio de los datos de entrenamiento, sin usar ninguna variable'
   }
-  return 'es una regla que no aprende, como predecir siempre la mediana, la clase más frecuente o el último valor'
+  return 'es una regla que no aprende, como predecir siempre la mediana, la clase más frecuente o una pauta histórica simple'
 }
 
 export function isErrorMetric(metricId?: string | null) {
@@ -29,6 +29,10 @@ export function tieRule(metricId?: string | null) {
 }
 
 export const consistencyRule = 'tiene que ganarle a la referencia en al menos 6 de cada 10 pruebas (y haber al menos 3 pruebas), y la mediana de esas diferencias tiene que ser a su favor'
+
+export const sharedEvaluationRule = 'Primero se congela el plan de particiones. En cada prueba, ambos se ajustan solo con el entrenamiento y se comparan sobre exactamente los mismos casos apartados. Así una diferencia no se debe a que uno recibió casos más fáciles.'
+
+export const confirmationRule = 'En modo recomendado, si hay soporte suficiente y un modelo aprendido queda provisionalmente arriba, solo ese modelo y la referencia repiten 3 separaciones reproducibles nuevas. Debe mejorar en conjunto, ganar al menos 2 de esas 3 y mantener una mediana favorable; si no, se conserva la referencia. Esta comprobación no ve la prueba reservada.'
 
 export function betterMeans(metricId?: string | null) {
   if (isErrorMetric(metricId)) return 'comete menos error'

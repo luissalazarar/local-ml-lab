@@ -674,7 +674,7 @@ export function Wizard() {
                 <option value="recommended">Automático recomendado</option>
                 <option value="quick">Rápido · solo referencia y modelo lineal</option>
               </select>
-              <small>{depth === "quick" ? "Compara únicamente la referencia y un modelo lineal. Es más rápido, pero no puede descubrir umbrales, saturación ni otras formas no lineales." : "Compara referencia, modelo lineal, Extra Trees y Random Forest con las mismas separaciones. Elige por rendimiento fuera del entrenamiento y consistencia, no por una correlación aislada."}</small>
+              <small>{depth === "quick" ? "Compara una referencia sin variables (mediana/promedio o clase frecuente) y un modelo lineal sobre las mismas pruebas. Es más rápido, pero no puede descubrir umbrales, saturación ni otras formas no lineales." : "Compara una referencia sin variables, modelo lineal, Extra Trees y Random Forest con las mismas separaciones. Un modelo solo reemplaza la referencia con mejora suficiente y consistente fuera del entrenamiento; no por una correlación aislada."}</small>
             </label>
             {goal !== "explore" && (
               <label>

@@ -64,7 +64,7 @@ export function Home() {
           <span className="dot">i</span>
           <div>
             <strong>Una referencia sencilla también puede ganar.</strong>
-            <p>La referencia es una regla que no aprende, como predecir siempre la mediana o la clase más frecuente. Un modelo solo gana si comete menos error que ella, de forma consistente y en datos que no vio al entrenar.</p>
+            <p>Representa qué se logra sin usar variables: mediana o promedio, clase frecuente o la mejor pauta histórica simple. Un modelo solo la reemplaza si supera esa misma regla en los mismos casos apartados, por un margen y con una consistencia definidos; la Guía muestra cada criterio.</p>
           </div>
         </div>
         <Link to="/new">Comenzar análisis</Link>

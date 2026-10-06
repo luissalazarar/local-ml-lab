@@ -13,7 +13,7 @@ La identidad visual (símbolo, variantes y tamaños de uso), los tokens y el est
 - Explorar Excel (.xlsx), CSV y Parquet con tipos primitivos. Excel es el camino principal.
 - Crear versiones preparadas auditables con un editor guiado por columna, preview antes/después, filas apartadas y receta reutilizable.
 - Estimar un valor, predecir categorías o pronosticar una serie mensual regular.
-- Comparar referencias simples, modelos lineales y árboles con particiones congeladas, confirmación secundaria cuando aplica y una política conservadora.
+- Comparar referencias simples, modelos lineales y árboles con particiones congeladas, criterios visibles de mejora y consistencia, y confirmación secundaria cuando aplica.
 - Observar candidatos, métricas, trayectorias y gráficos reales por evaluación mientras el run continúa; después se puede reproducir el recorrido sin reentrenar.
 - Revisar calidad, exclusiones, métricas, candidatos fallidos y límites.
 - Explorar variables numéricas con correlaciones, scatterplots y boxplots calculados localmente sobre una muestra determinista.
@@ -95,7 +95,7 @@ Prompt para tu asistente:
 
 El flujo es **Original → Preparado → Análisis → Entrenamiento**. Preparar no significa que Laboratorio ML pueda saber si tus datos son correctos para tu negocio. Las transformaciones que aprenden de los datos continúan ocurriendo únicamente dentro del entrenamiento para evitar fugas.
 
-La confiabilidad resume la solidez de la evaluación; no es una probabilidad de acierto. Una referencia sencilla puede ganar cuando la mejora no alcanza magnitud y consistencia suficientes. La importancia se calcula fuera del train de cada fold, no decide retrospectivamente el ganador y no demuestra causalidad.
+La confiabilidad resume la solidez de la evaluación; no es una probabilidad de acierto. La referencia muestra qué se logra sin usar variables: mediana o promedio en números, clase frecuente en categorías y, para una serie, la mejor pauta histórica simple disponible (último valor, media histórica o estacional). Se construye dentro de cada entrenamiento y se mide en los mismos casos apartados que cada modelo. Para reemplazarla, un candidato completo necesita una mejora mínima (3 % menos error, o 0,02 más en métricas de acierto/ajuste), al menos tres comparaciones, victorias en 60 % o más y una diferencia típica favorable; los empates prácticos favorecen el método más simple. En modo recomendado, el provisional debe repetir la mejora en 2 de 3 separaciones nuevas. Son reglas conservadoras del producto, no pruebas de significancia. La importancia se calcula fuera del train de cada fold, no decide retrospectivamente el ganador y no demuestra causalidad.
 
 ## Privacidad y OpenAI opcional
 
@@ -135,7 +135,7 @@ El Home, el primer paso y la sección [Guía](http://127.0.0.1:3000/guide#datase
 
 **¿Mis datos salen del equipo?** No. La aplicación genera una proyección revisable para que decidas si la copias a otra herramienta.
 
-**¿Por qué ganó una referencia sencilla?** Porque ningún candidato completo superó la mejora práctica mínima y el gate de consistencia. Esto no demuestra que no exista señal.
+**¿Por qué ganó una referencia sencilla?** Porque ningún candidato completo superó, en los mismos casos apartados, la mejora mínima y la consistencia exigidas: 3 % menos error o 0,02 más de acierto/ajuste, al menos tres comparaciones, 60 % de victorias y mediana favorable. Si hubo confirmación, el provisional tampoco repitió la mejora en al menos 2 de 3 separaciones nuevas. Esto no demuestra que no exista señal.
 
 **¿Por qué no hay R² o ROC?** Algunas métricas no son válidas con un resultado constante, una sola clase o soporte insuficiente; se muestran como no disponibles con motivo.
 

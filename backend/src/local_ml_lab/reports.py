@@ -132,6 +132,7 @@ def create_excel(result: dict, path: Path) -> None:
         ("Métrica principal", presentation_label(result.get("primary_metric_id"))),
         ("Confiabilidad", result.get("reliability", {}).get("primary_level")),
         ("Significado", "Solidez de la evaluación; no es una probabilidad de acierto."),
+        ("Referencia y criterio", selection_criteria_text(result)),
         ("Escenarios interactivos", scenario_summary_text(result)),
         ("Versión de Laboratorio ML", release_label(result)),
     ]
@@ -431,6 +432,9 @@ def create_pdf(result: dict, path: Path) -> None:
             styles["BodyText"],
         ),
         Spacer(1, 4 * mm),
+        Paragraph("Referencia y regla de comparación", styles["Heading2"]),
+        Paragraph(paragraph_text(selection_criteria_text(result)), styles["BodyText"]),
+        Spacer(1, 4 * mm),
         Paragraph("Cómo se evaluó", styles["Heading2"]),
         Paragraph(
             paragraph_text(
@@ -552,6 +556,52 @@ def confirmation_text(result):
     if status == "not_confirmed":
         return "La mejora no volvió a aparecer con suficiente consistencia; se conservó la referencia."
     return "No se ejecutó porque no aplicaba o no había soporte suficiente; no se redujeron los requisitos."
+
+
+def selection_criteria_text(result):
+    problem = result.get("problem_type")
+    metric = result.get("primary_metric_id")
+    if problem == "regression":
+        reference = (
+            "la mediana calculada solo con el entrenamiento"
+            if metric == "mae"
+            else "el promedio calculado solo con el entrenamiento"
+        )
+    elif problem == "classification":
+        reference = "la clase más frecuente del entrenamiento"
+    elif problem == "forecasting":
+        baseline_id = result.get("baseline_comparison", {}).get("baseline_model_id")
+        baseline_name = next(
+            (
+                candidate.get("display_name")
+                for candidate in result.get("candidates", [])
+                if candidate.get("model_id") == baseline_id
+            ),
+            None,
+        )
+        reference = (
+            f"la pauta histórica simple seleccionada ({baseline_name}) en cada fecha histórica"
+            if baseline_name
+            else "la mejor pauta histórica simple elegible en cada fecha histórica"
+        )
+    else:
+        return "No hubo una comparación predictiva aplicable para este resultado."
+
+    gain = (
+        "al menos 3 % menos error que la referencia"
+        if metric in {"mae", "rmse"}
+        else "al menos 0,02 más que la referencia"
+    )
+    return (
+        f"La referencia representa qué se logra sin usar variables: {reference}. "
+        "En cada prueba, referencia y candidato se ajustan solo con el entrenamiento y se miden "
+        "en exactamente los mismos casos apartados. Para reemplazarla, un candidato debe completar "
+        f"todas las pruebas, lograr {gain}, tener al menos tres comparaciones definibles, ganar "
+        "al menos 60 % de ellas y mostrar una mediana de diferencias favorable. Si varios métodos "
+        "cumplen y están prácticamente empatados, se elige el más simple. En modo recomendado, "
+        "el provisional además debe repetir la mejora en al menos 2 de 3 separaciones nuevas; esa "
+        "confirmación no ve la prueba reservada. Son reglas del producto, no pruebas de significancia estadística."
+    )
 
 
 def holdout_text(result):
