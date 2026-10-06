@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.4 — 2026-10-06
+
+- Convertida la instalación inicial de macOS y Windows en un solo comando capaz de instalar Docker Desktop desde la fuente oficial cuando falta, iniciar el motor, elegir un puerto libre, reintentar descargas transitorias, ejecutar el smoke y abrir la aplicación. La guía para asistentes queda reducida a una autorización global; WSL 2 puede requerir un único reinicio en Windows.
+
 ## 1.0.3 — 2026-10-06
 
 - Aclarado en la app qué es la referencia simple (mediana o promedio en números, clase más frecuente en categorías, último valor en series) y en base a qué se decide que un modelo es mejor: misma métrica y datos no vistos, mejora suficiente (3 % del error o 0,02), consistencia (6 de cada 10 pruebas, mediana a favor) y simplicidad ante empates. Solo cambian textos de Inicio, Guía, Evaluación en vivo y Resultados; la política de selección no cambia.

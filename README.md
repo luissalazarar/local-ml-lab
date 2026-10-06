@@ -1,4 +1,4 @@
-# Laboratorio ML · v0.7.0001
+# Laboratorio ML · v1.0.0004
 
 ¿Tienes un Excel y quieres probar machine learning, pero no sabes por dónde empezar?
 
@@ -39,50 +39,47 @@ Capturas tomadas de la instalación Docker verificada, sin mockups:
 
 ## Quick start
 
-Solo requiere un motor Docker en ejecución con Compose v2 y al menos 4 GiB disponibles para la primera construcción. En Windows y macOS, la opción más simple es Docker Desktop porque ya incluye el motor, el CLI y Compose. En Linux basta Docker Engine con el plugin Compose. El instalador levanta los servicios y ejecuta una prueba sintética completa; Python y Node quedan dentro de Docker.
+El instalador levanta los servicios, ejecuta una prueba sintética y abre la aplicación. Python y Node quedan dentro de Docker. Si Docker Desktop todavía no existe, usa la variante indicada para instalarlo desde Docker.
 
-macOS/Linux:
+macOS con o sin Docker:
 
 ```bash
-sh scripts/setup.sh
+sh scripts/setup.sh --install-docker
 ```
 
-Windows PowerShell:
+Windows PowerShell con o sin Docker:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/setup.ps1
+powershell -ExecutionPolicy Bypass -File scripts/setup.ps1 -InstallDocker
 ```
 
-Abre [http://127.0.0.1:3000](http://127.0.0.1:3000). Usamos la dirección IPv4 publicada por Compose para evitar que otra aplicación ligada a `localhost` por IPv6 intercepte la navegación. No hace falta `.env`, Python, Node, Git ni OpenAI. Git es opcional porque el repositorio también puede obtenerse como ZIP. Los scripts no cambian la política global de PowerShell ni borran datos. Consulta estado con `docker compose ps`; apaga sin borrar datos con `docker compose down`. Si el puerto 3000 está ocupado, define `APP_PORT` antes de ejecutar el instalador.
+En Linux instala Docker Engine con Compose y ejecuta `sh scripts/setup.sh`. No hace falta `.env`, Python, Node, Git ni OpenAI. Los instaladores conservan los datos, esperan a que Docker esté listo y eligen otro puerto automáticamente si el 3000 está ocupado.
 
 ## Instalación asistida por IA
 
-Puedes pedirle a tu asistente de IA (Claude, ChatGPT, Codex, Gemini…) que obtenga este repositorio y lo deje funcionando. Pásale la URL del repo y el prompt de abajo. **No necesitas tener nada instalado de antemano.**
+Pásale la URL de este repositorio a Codex, Claude u otra IA con acceso al equipo y dile: **“Déjalo listo”.** No necesitas instalar nada antes.
 
-### Contrato de una sola confirmación
+Para que no se detenga por permisos, activa para esta tarea el acceso a terminal, red e instalación de aplicaciones. En Codex, la opción se llama **Full access**; en otros asistentes usa el permiso equivalente. Hazlo solo si confías en este repositorio y vuelve a tu configuración habitual al terminar.
 
-El asistente debe revisar primero el equipo y presentar **una sola pregunta**: si autorizas instalar y configurar todo lo necesario hasta dejar Laboratorio ML listo. Esa pregunta debe mencionar que puede incluir WSL 2 en Windows, Docker Desktop o Docker Engine con Compose, elevación administrativa, aceptación de los términos del instalador oficial y un reinicio del sistema. Debe escoger la ruta mínima y no instalar Git, Python o Node si no son necesarios.
+La IA debe hacer como máximo **una sola pregunta**. En esa pregunta reúne la autorización para descargar el repositorio, instalar Docker Desktop y WSL 2 si faltan, aceptar los términos del instalador oficial, usar elevación administrativa y reiniciar si Windows lo exige. Después del `sí`, no debe pedir nuevas confirmaciones. Una ventana protegida de macOS o Windows para contraseña/UAC no cuenta como otra pregunta: solo hay que aceptarla. Si Windows se reinicia, `continúa` reanuda la misma autorización.
 
-Si respondes que sí, esa autorización permanece vigente durante toda la instalación. El asistente no debe volver a pedir permiso para cada comando, instalación, arranque, reintento o comprobación. Debe ejecutar todo lo que su entorno le permita, iniciar Docker Desktop por su cuenta, esperar al motor, continuar hasta ejecutar el smoke y abrir la aplicación. No debe detenerse solo para decirte que abras Docker manualmente.
+Después de obtener el repo —con Git si ya existe o como ZIP si no— la IA solo debe ejecutar:
 
-Las ventanas protegidas del sistema operativo (UAC, contraseña de administrador o avisos de seguridad) no pueden omitirse: el asistente debe advertirte que las aceptes cuando aparezcan, sin convertir cada una en una nueva pregunta de autorización. Si Windows necesita reiniciarse, debe dejar registrado el siguiente paso, reiniciar si tiene capacidad para hacerlo y retomar al volver. Si la conversación no puede reanudarse sola, tu mensaje `continúa` o `ya reinicié` solo reanuda la autorización original; no debe pedir otra confirmación.
+```bash
+# macOS
+sh scripts/setup.sh --install-docker
+```
 
-La autorización se limita a esta instalación: no permite borrar datos existentes, desactivar controles de seguridad, usar descargas no oficiales ni modificar el código salvo una incompatibilidad necesaria y explicada.
+```powershell
+# Windows
+powershell -ExecutionPolicy Bypass -File scripts/setup.ps1 -InstallDocker
+```
 
-Qué debe hacer, en orden:
+Los scripts detectan la arquitectura, instalan Docker Desktop desde el sitio oficial solo si falta, habilitan o actualizan WSL 2 en Windows, inician Docker, esperan al motor, buscan un puerto libre, construyen la app, ejecutan el smoke y abren la URL. No instalan Git, Python ni Node y no borran datos. Si Windows necesita reinicio, la IA debe volver a ejecutar el mismo comando después de reiniciar.
 
-1. **Revisar y pedir una sola autorización.** Comprobar el sistema operativo, arquitectura, permisos, memoria, puerto, WSL 2 cuando sea Windows y, sobre todo, si hay un motor Docker activo con Compose v2 (`docker info` y `docker compose version`). El CLI de Docker sin motor no es suficiente. Presentar juntos todos los faltantes previsibles y hacer la pregunta global descrita arriba.
-2. Tras el `sí`, instalar solo lo mínimo desde fuentes oficiales (Docker: https://docs.docker.com/get-started/get-docker/ · WSL: https://learn.microsoft.com/windows/wsl/install). En Windows, usar WSL 2 y Docker Desktop. En macOS, usar Docker Desktop para Apple Silicon o Intel. En Linux, usar Docker Engine y el plugin Compose. Docker Desktop ya incluye motor, CLI y Compose: no instalar esas piezas por separado. Reiniciar si es obligatorio, abrir Docker Desktop mediante comando y esperar hasta que `docker info` responda. Resolver por sí mismo un puerto ocupado eligiendo otro libre.
-3. Obtener el repositorio. Si ya existe Git, usar `git clone`; si no existe, descargar y extraer el ZIP con las herramientas incluidas en el sistema. No instalar Git solo para este paso.
-4. Ejecutar el instalador del Quick start correspondiente. No crear `.env` salvo que sea necesario para usar otro puerto. La primera construcción descarga imágenes y puede tardar varios minutos.
-5. Confirmar que el instalador termina con el smoke sintético en `healthy`; ese smoke recorre regresión, clasificación y pronóstico, abre XLSX/PDF y comprueba persistencia y ausencia de muestras privadas. Si falla, diagnosticar y reintentar sin borrar volúmenes ni volver a solicitar permiso.
-6. Ejecutar `docker compose ps`, comprobar frontend, API, worker y queue saludables y abrir la URL final. Python es opcional y no se necesita OpenAI ni ninguna API key.
+Prompt recomendado:
 
-Al terminar debe informar `status`, `app_url`, `services_checked`, `smoke_result`, `changes_made`, `limitations` y `next_action`, sin decir «saludable» si solo validó Compose. Si una encolación falla, la API responde `503` con el `job_id`; el outbox SQLite la recupera cuando vuelve la cola, y no debe borrar volúmenes para resolverlo. Para una validación más completa también existen `python3 scripts/cancel_smoke.py` y `scripts/recovery_smoke.py`.
-
-Prompt para tu asistente:
-
-> Obtén este repositorio usando la URL que acompaña esta solicitud y déjalo completamente funcionando, aunque no haya nada instalado. Lee todo el README y cumple la sección «Instalación asistida por IA». Inspecciona primero el equipo y luego hazme una sola pregunta para autorizar, en conjunto, la instalación y configuración de los prerequisitos oficiales mínimos, incluida elevación administrativa, términos del instalador y reinicio si corresponde. Cuando responda sí, no vuelvas a pedirme permiso. En Windows instala WSL 2 y Docker Desktop solo si faltan; en macOS instala Docker Desktop solo si falta; en Linux instala Docker Engine y Compose solo si faltan. Docker Desktop ya incluye motor, CLI y Compose. No instales Git, Python ni Node: si no hay Git, descarga el ZIP con las herramientas del sistema, y ejecuta Python y Node dentro de Docker. Abre Docker por tu cuenta, espera a que el motor esté listo, elige otro puerto si hace falta, ejecuta el instalador, completa el smoke y abre la aplicación. Si aparece una ventana protegida del sistema, indícame que la acepte; eso no inicia una nueva ronda de autorización. Si un reinicio interrumpe la conversación, conserva el siguiente paso y continúa con la autorización original cuando vuelva. No borres datos, no desactives seguridad y no uses descargas no oficiales. No termines hasta que la aplicación esté lista o exista un bloqueo externo concreto que no puedas resolver. Al final informa la URL, servicios comprobados, smoke ejecutado, cambios y limitaciones reales.
+> Obtén este repositorio y déjalo listo. Revisa primero si tienes acceso a terminal, red e instalación; si te falta, inclúyelo en una única pregunta junto con la autorización para instalar Docker Desktop/WSL 2, aceptar sus términos, elevar permisos y reiniciar si hace falta. Después de mi sí, no vuelvas a pedirme confirmación. Usa el instalador del README con la opción de instalar Docker, acepta únicamente ventanas protegidas del sistema, continúa tras un reinicio, completa el smoke y abre la aplicación. No instales Git, Python ni Node, no borres datos y no termines antes de que la app funcione o exista un bloqueo externo concreto.
 
 ## Flujo de uso
 

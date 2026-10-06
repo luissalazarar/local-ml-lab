@@ -1,3 +1,5 @@
+param([switch]$InstallDocker)
+
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Push-Location $root
@@ -27,6 +29,41 @@ try {
     throw 'Docker Desktop no pudo iniciar. Comprueba que WSL 2 y la virtualización estén habilitados; no borres los datos de Docker.'
   }
 
+  function Install-DockerDesktop {
+    if (-not [Environment]::Is64BitOperatingSystem) {
+      throw 'Docker Desktop necesita Windows de 64 bits.'
+    }
+    Write-Host 'Comprobando WSL 2…'
+    $wslAvailable = Get-Command wsl.exe -ErrorAction SilentlyContinue
+    if ($wslAvailable) { & wsl.exe --status *> $null }
+    if (-not $wslAvailable -or $LASTEXITCODE -ne 0) {
+      Write-Host 'Habilitando WSL 2. Windows puede mostrar una ventana UAC.'
+      $wsl = Start-Process powershell.exe -Verb RunAs -Wait -PassThru -ArgumentList @(
+        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
+        'wsl.exe --install --no-distribution'
+      )
+      if ($wsl.ExitCode -notin @(0, 3010)) { throw "No se pudo habilitar WSL 2 (código $($wsl.ExitCode))." }
+      & wsl.exe --status *> $null
+      if ($LASTEXITCODE -ne 0) {
+        throw 'REBOOT_REQUIRED: reinicia Windows y vuelve a ejecutar scripts/setup.ps1 -InstallDocker. La autorización original sigue vigente.'
+      }
+    }
+    & wsl.exe --update
+    if ($LASTEXITCODE -ne 0) { throw 'No se pudo actualizar WSL 2.' }
+    $machine = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+    $dockerArch = if ($machine -eq 'Arm64') { 'arm64' } else { 'amd64' }
+    $installer = Join-Path ([IO.Path]::GetTempPath()) 'LocalMLLab-DockerDesktopInstaller.exe'
+    $download = "https://desktop.docker.com/win/main/$dockerArch/Docker%20Desktop%20Installer.exe"
+    Write-Host 'Descargando Docker Desktop desde Docker…'
+    Invoke-WebRequest -Uri $download -OutFile $installer -UseBasicParsing
+    Write-Host 'Instalando Docker Desktop con WSL 2…'
+    $process = Start-Process $installer -Wait -PassThru -ArgumentList @(
+      'install', '--user', '--quiet', '--accept-license', '--backend=wsl-2', '--no-windows-containers'
+    )
+    Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
+    if ($process.ExitCode -ne 0) { throw "Docker Desktop no pudo instalarse (código $($process.ExitCode))." }
+  }
+
   $docker = Get-Command docker -ErrorAction SilentlyContinue
   if (-not $docker) {
     $candidate = 'C:\Program Files\Docker\Docker\resources\bin\docker.exe'
@@ -37,7 +74,15 @@ try {
       if (Test-Path -LiteralPath $candidate) {
         $env:Path = (Split-Path $candidate) + ';' + $env:Path
       } else {
-        throw 'Docker Desktop no está instalado. La instalación asistida debe instalarlo desde la fuente oficial antes de ejecutar este script.'
+        if (-not $InstallDocker) {
+          throw 'Docker Desktop no está instalado. Ejecuta scripts/setup.ps1 -InstallDocker.'
+        }
+        Install-DockerDesktop
+        $candidate = Join-Path $env:LOCALAPPDATA 'Programs\DockerDesktop\resources\bin\docker.exe'
+        if (-not (Test-Path -LiteralPath $candidate)) {
+          throw 'Docker Desktop terminó de instalarse, pero el CLI no apareció en la ruta esperada.'
+        }
+        $env:Path = (Split-Path $candidate) + ';' + $env:Path
       }
     }
   }
@@ -45,13 +90,20 @@ try {
   docker compose version | Out-Null
   if ($LASTEXITCODE -ne 0) { throw 'Docker Compose v2 no está disponible.' }
   $portNumber = if ($env:APP_PORT) { [int]$env:APP_PORT } else { 3000 }
-  $appUrl = "http://127.0.0.1:$portNumber"
   $port = Get-NetTCPConnection -LocalPort $portNumber -State Listen -ErrorAction SilentlyContinue
   $composePort = docker compose port frontend 8080 2>$null
   $ownedByThisApp = $composePort -and ($composePort -match ":$portNumber$")
   if ($port -and -not $ownedByThisApp) {
-    throw "El puerto $portNumber está ocupado por otro proceso (PID $($port.OwningProcess -join ', ')). Define APP_PORT con otro puerto."
+    $requestedPort = $portNumber
+    $portNumber = 3001
+    while (Get-NetTCPConnection -LocalPort $portNumber -State Listen -ErrorAction SilentlyContinue) {
+      $portNumber++
+      if ($portNumber -gt 3099) { throw 'No hay un puerto libre entre 3001 y 3099.' }
+    }
+    $env:APP_PORT = [string]$portNumber
+    Write-Host "El puerto $requestedPort estaba ocupado; se usará $portNumber."
   }
+  $appUrl = "http://127.0.0.1:$portNumber"
   $drive = Get-PSDrive -Name ((Get-Location).Drive.Name)
   if ($drive.Free -lt 2GB) { throw 'Hay menos de 2 GiB libres; libera espacio antes de construir.' }
   $avastRoot = @(
@@ -63,8 +115,18 @@ try {
     if (-not $env:UV_INSECURE_HOST) { $env:UV_INSECURE_HOST = 'pypi.org files.pythonhosted.org' }
     if (-not $env:NPM_CONFIG_STRICT_SSL) { $env:NPM_CONFIG_STRICT_SSL = 'false' }
   }
-  docker compose up --build -d
-  if ($LASTEXITCODE -ne 0) { throw 'Docker Compose no pudo construir o iniciar la aplicación.' }
+  $buildReady = $false
+  foreach ($buildAttempt in 1..3) {
+    docker compose up --build -d
+    if ($LASTEXITCODE -eq 0) { $buildReady = $true; break }
+    if ($buildAttempt -lt 3) {
+      Write-Warning "La descarga o construcción falló; reintentando ($($buildAttempt + 1) de 3)…"
+      Start-Sleep -Seconds 5
+    }
+  }
+  if (-not $buildReady) {
+    throw 'La construcción falló tres veces. Revisa la conexión o proxy y vuelve a ejecutar el mismo comando; los datos se conservan.'
+  }
   $deadline = (Get-Date).AddMinutes(8)
   $ready = $false
   do {
@@ -84,6 +146,7 @@ try {
     docker compose exec -T api rm -f /app/setup-smoke.py
   }
   Write-Host "Laboratorio ML está verificado y disponible en $appUrl"
+  try { Start-Process $appUrl } catch { Write-Host "Abre $appUrl en tu navegador." }
 } finally {
   Pop-Location
 }
