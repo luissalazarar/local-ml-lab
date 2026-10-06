@@ -46,7 +46,7 @@ export const concepts: Record<string, Concept> = {
   fold: { name: 'Partición de validación', short: 'Una separación concreta de datos para entrenar y comprobar sin mezclar ambos usos.' },
   cross_validation: { name: 'Validación cruzada', short: 'Repite entrenamiento y validación con distintas particiones.' },
   split: { name: 'Partición', short: 'Una separación concreta entre entrenamiento y validación.' },
-  baseline: { name: 'Baseline o referencia', short: 'Una regla sencilla que el modelo debería intentar superar.' },
+  baseline: { name: 'Baseline o referencia', short: 'Una regla que no aprende, usada como vara de medir: predice siempre la mediana o el promedio, la clase más frecuente o el último valor.', extended: 'Un modelo es mejor solo si, con la misma métrica y en datos que no vio al entrenar, supera a la referencia por un margen suficiente y de forma consistente.' },
   model: { name: 'Modelo', short: 'Una regla aprendida a partir de los datos de entrenamiento.' },
   candidate: { name: 'Candidato', short: 'Una forma de predecir que compite bajo el mismo plan de evaluación.' },
   selection: { name: 'Selección', short: 'La comparación que decide qué candidato cumple mejor las reglas sin mirar la prueba reservada.' },

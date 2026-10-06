@@ -1,5 +1,6 @@
 import { concepts } from './concepts'
 import { metricLabel } from '../presentation/labels'
+import { referenceRule } from './comparisonRules'
 
 const fmt = new Intl.NumberFormat('es-PE', { maximumFractionDigits: 4 })
 const percent = new Intl.NumberFormat('es-PE', { maximumFractionDigits: 1, style: 'percent' })
@@ -36,9 +37,10 @@ type MetricInterpretationProps = {
   selectedName?: string
   outcome?: string | null
   provisional?: boolean
+  problemType?: string | null
 }
 
-export function MetricInterpretation({ metricId, value, baselineValue, baselineName = 'Referencia sencilla', selectedName = 'Modelo', outcome, provisional = false }: MetricInterpretationProps) {
+export function MetricInterpretation({ metricId, value, baselineValue, baselineName = 'Referencia sencilla', selectedName = 'Modelo', outcome, provisional = false, problemType }: MetricInterpretationProps) {
   const item = metricId ? concepts[metricId] : undefined
   const comparable = value != null && baselineValue != null
   const direction = item?.direction === 'higher' ? 'más alto' : item?.direction === 'lower' ? 'más bajo' : 'más favorable'
@@ -59,7 +61,7 @@ export function MetricInterpretation({ metricId, value, baselineValue, baselineN
     </div>
     <div className="metricInterpretationGrid">
       <article><strong>1. ¿Qué significa?</strong><p>{metricValueMeaning(metricId, value)}</p></article>
-      <article><strong>2. ¿Contra qué se compara?</strong><p>{comparable ? `${selectedName}: ${fmt.format(value!)}. ${baselineName}: ${fmt.format(baselineValue!)}. En ${metricLabel(metricId)}, ${direction} es mejor.` : metricComparisonGuide(metricId)}</p></article>
+      <article><strong>2. ¿Contra qué se compara?</strong><p>{comparable ? `${selectedName}: ${fmt.format(value!)}. ${baselineName}: ${fmt.format(baselineValue!)}. En ${metricLabel(metricId)}, ${direction} es mejor.${problemType ? ` La referencia ${referenceRule(problemType, metricId)}.` : ''}` : metricComparisonGuide(metricId)}</p></article>
       <article><strong>3. ¿Está bien o mal?</strong><p>{verdict}</p>{item?.goodBad && <small>{item.goodBad}</small>}</article>
     </div>
   </section>

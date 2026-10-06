@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.3 — 2026-10-06
+
+- Aclarado en la app qué es la referencia simple (mediana o promedio en números, clase más frecuente en categorías, último valor en series) y en base a qué se decide que un modelo es mejor: misma métrica y datos no vistos, mejora suficiente (3 % del error o 0,02), consistencia (6 de cada 10 pruebas, mediana a favor) y simplicidad ante empates. Solo cambian textos de Inicio, Guía, Evaluación en vivo y Resultados; la política de selección no cambia.
+
 ## 1.0.0 — 2026-10-02
 
 - Ampliado a 200 MiB el tamaño máximo por archivo; API, Compose, proxy y texto visible quedan sincronizados, con streaming en Nginx y temporales de multipart sobre el volumen local.

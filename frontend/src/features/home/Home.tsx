@@ -64,7 +64,7 @@ export function Home() {
           <span className="dot">i</span>
           <div>
             <strong>Una referencia sencilla también puede ganar.</strong>
-            <p>Es una comparación necesaria: permite saber si un modelo aporta algo adicional.</p>
+            <p>La referencia es una regla que no aprende, como predecir siempre la mediana o la clase más frecuente. Un modelo solo gana si comete menos error que ella, de forma consistente y en datos que no vio al entrenar.</p>
           </div>
         </div>
         <Link to="/new">Comenzar análisis</Link>
