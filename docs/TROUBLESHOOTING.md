@@ -1,7 +1,9 @@
 # Solución de problemas
 
 - Puerto ocupado: cambia `APP_PORT` en `.env`, por ejemplo `APP_PORT=3001`.
-- Docker no inicia: abre Docker Desktop, confirma WSL 2 y reinicia Windows si el instalador lo solicita.
+- Docker no inicia en Windows: abre Docker Desktop, confirma el componente WSL 2 y reinicia si el instalador lo solicita; Laboratorio ML no necesita Ubuntu ni otra distribución Linux.
+- Docker no inicia en macOS: abre Docker Desktop y espera a que el motor quede listo; WSL no aplica.
+- Docker no inicia en Linux: confirma Docker Engine y el plugin Compose de tu distribución; Docker Desktop y WSL no aplican.
 - Worker no disponible: `docker compose logs --tail=100 worker queue`.
 - Poco espacio: revisa artifacts desde la interfaz; no borres el volumen como arreglo de arranque.
 - Resultado no evaluable: revisa soporte de clases, filas etiquetadas y alcance. No significa que el job haya fallado.

@@ -33,11 +33,11 @@ try {
     if (-not [Environment]::Is64BitOperatingSystem) {
       throw 'Docker Desktop necesita Windows de 64 bits.'
     }
-    Write-Host 'Comprobando WSL 2…'
+    Write-Host 'Comprobando el componente WSL 2 de Windows (sin distribución Linux)…'
     $wslAvailable = Get-Command wsl.exe -ErrorAction SilentlyContinue
     if ($wslAvailable) { & wsl.exe --status *> $null }
     if (-not $wslAvailable -or $LASTEXITCODE -ne 0) {
-      Write-Host 'Habilitando WSL 2. Windows puede mostrar una ventana UAC.'
+      Write-Host 'Habilitando WSL 2 sin instalar Ubuntu ni otra distribución Linux. Windows puede mostrar una ventana UAC.'
       $wsl = Start-Process powershell.exe -Verb RunAs -Wait -PassThru -ArgumentList @(
         '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
         'wsl.exe --install --no-distribution'

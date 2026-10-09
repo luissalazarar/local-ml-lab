@@ -5,9 +5,11 @@ Para uso normal ejecuta `sh scripts/setup.sh` en macOS/Linux o
 `http://127.0.0.1:3000`.
 
 La única dependencia de ejecución en el host es un motor Docker con Compose v2. En Windows y
-macOS, Docker Desktop es la ruta más simple porque incluye motor, CLI y Compose; Windows también
-necesita WSL 2. Linux puede usar Docker Engine con el plugin Compose. Git es opcional y Python y
-Node se ejecutan dentro de Docker.
+macOS, Docker Desktop es la ruta más simple porque incluye motor, CLI y Compose. El backend de
+contenedores Linux usado en Windows necesita el componente WSL 2, pero no una distribución como
+Ubuntu; el instalador usa `wsl.exe --install --no-distribution`. macOS no usa WSL. Linux usa Docker
+Engine con el plugin Compose de su propia distribución, sin Docker Desktop ni WSL. Git es opcional
+y Python y Node se ejecutan dentro de Docker.
 
 Ambos instaladores son idempotentes: pueden ejecutarse de nuevo, inician Docker Desktop cuando
 está cerrado, respetan un stack existente, construyen Compose, esperan healthchecks y ejecutan el

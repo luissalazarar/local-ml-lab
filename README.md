@@ -39,7 +39,7 @@ Capturas tomadas de la instalación Docker verificada, sin mockups:
 
 ## Quick start
 
-El instalador levanta los servicios, ejecuta una prueba sintética y abre la aplicación. Python y Node quedan dentro de Docker. Si Docker Desktop todavía no existe, usa la variante indicada para instalarlo desde Docker.
+El instalador levanta los servicios, ejecuta una prueba sintética y abre la aplicación. Python y Node quedan dentro de Docker. Usa solo el comando de tu sistema operativo:
 
 macOS con o sin Docker:
 
@@ -47,13 +47,21 @@ macOS con o sin Docker:
 sh scripts/setup.sh --install-docker
 ```
 
-Windows PowerShell con o sin Docker:
+Windows PowerShell con o sin Docker Desktop:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/setup.ps1 -InstallDocker
 ```
 
-En Linux instala Docker Engine con Compose y ejecuta `sh scripts/setup.sh`. No hace falta `.env`, Python, Node, Git ni OpenAI. Los instaladores conservan los datos, esperan a que Docker esté listo y eligen otro puerto automáticamente si el 3000 está ocupado.
+En Windows, la opción `-InstallDocker` instala Docker Desktop solo si falta. Para su backend predeterminado de contenedores Linux también habilita WSL 2 si falta, pero usa `--no-distribution`: no instala Ubuntu ni otra distribución Linux.
+
+En Linux instala Docker Engine con el plugin Compose correspondiente a tu distribución y ejecuta:
+
+```bash
+sh scripts/setup.sh
+```
+
+No hace falta `.env`, Python, Node, Git ni OpenAI. Los instaladores conservan los datos, esperan a que Docker esté listo y eligen otro puerto automáticamente si el 3000 está ocupado.
 
 ## Instalación asistida por IA
 
@@ -61,7 +69,7 @@ Pásale la URL de este repositorio a Codex, Claude u otra IA con acceso al equip
 
 Para que no se detenga por permisos, activa para esta tarea el acceso a terminal, red e instalación de aplicaciones. En Codex, la opción se llama **Full access**; en otros asistentes usa el permiso equivalente. Hazlo solo si confías en este repositorio y vuelve a tu configuración habitual al terminar.
 
-La IA debe hacer como máximo **una sola pregunta**. En esa pregunta reúne la autorización para descargar el repositorio, instalar Docker Desktop y WSL 2 si faltan, aceptar los términos del instalador oficial, usar elevación administrativa y reiniciar si Windows lo exige. Después del `sí`, no debe pedir nuevas confirmaciones. Una ventana protegida de macOS o Windows para contraseña/UAC no cuenta como otra pregunta: solo hay que aceptarla. Si Windows se reinicia, `continúa` reanuda la misma autorización.
+La IA debe detectar primero el sistema operativo y hacer como máximo **una sola pregunta**. En esa pregunta reúne únicamente la autorización que corresponda: Docker Desktop en macOS; Docker Desktop y el componente WSL 2 sin distribución Linux en Windows; o Docker Engine con Compose en Linux. También puede incluir aceptar los términos del instalador oficial, usar elevación administrativa y reiniciar si Windows lo exige. Después del `sí`, no debe pedir nuevas confirmaciones. Una ventana protegida de macOS o Windows para contraseña/UAC no cuenta como otra pregunta: solo hay que aceptarla. Si Windows se reinicia, `continúa` reanuda la misma autorización.
 
 Después de obtener el repo —con Git si ya existe o como ZIP si no— la IA solo debe ejecutar:
 
@@ -75,11 +83,16 @@ sh scripts/setup.sh --install-docker
 powershell -ExecutionPolicy Bypass -File scripts/setup.ps1 -InstallDocker
 ```
 
-Los scripts detectan la arquitectura, instalan Docker Desktop desde el sitio oficial solo si falta, habilitan o actualizan WSL 2 en Windows, inician Docker, esperan al motor, buscan un puerto libre, construyen la app, ejecutan el smoke y abren la URL. No instalan Git, Python ni Node y no borran datos. Si Windows necesita reinicio, la IA debe volver a ejecutar el mismo comando después de reiniciar.
+```bash
+# Linux, después de instalar Docker Engine + Compose si faltan
+sh scripts/setup.sh
+```
+
+En macOS y Windows, los scripts detectan la arquitectura e instalan Docker Desktop desde el sitio oficial solo si falta. Solo en Windows habilitan o actualizan WSL 2, sin instalar una distribución Linux. En Linux reutilizan Docker Engine y Compose del propio sistema. Luego inician o comprueban el motor, buscan un puerto libre, construyen la app, ejecutan el smoke y abren o indican la URL. No instalan Git, Python ni Node y no borran datos. Si Windows necesita reinicio, la IA debe volver a ejecutar el mismo comando después de reiniciar.
 
 Prompt recomendado:
 
-> Obtén este repositorio y déjalo listo. Revisa primero si tienes acceso a terminal, red e instalación; si te falta, inclúyelo en una única pregunta junto con la autorización para instalar Docker Desktop/WSL 2, aceptar sus términos, elevar permisos y reiniciar si hace falta. Después de mi sí, no vuelvas a pedirme confirmación. Usa el instalador del README con la opción de instalar Docker, acepta únicamente ventanas protegidas del sistema, continúa tras un reinicio, completa el smoke y abre la aplicación. No instales Git, Python ni Node, no borres datos y no termines antes de que la app funcione o exista un bloqueo externo concreto.
+> Obtén este repositorio y déjalo listo. Detecta primero el sistema operativo y revisa si tienes acceso a terminal, red e instalación. Si te falta autorización, haz una única pregunta e incluye solo lo necesario para ese sistema: Docker Desktop en macOS; Docker Desktop y WSL 2 sin instalar Ubuntu ni otra distribución Linux en Windows; Docker Engine con Compose en Linux. Incluye términos oficiales, elevación y reinicio solo cuando correspondan. Después de mi sí, no vuelvas a pedirme confirmación. Usa exactamente el comando del README para ese sistema; en Linux no uses `--install-docker`. Continúa tras un reinicio, completa el smoke y abre o indica la aplicación. No instales Git, Python ni Node, no borres datos y no termines antes de que la app funcione o exista un bloqueo externo concreto.
 
 ## Flujo de uso
 
